@@ -6,7 +6,6 @@ toolchain go1.21.4
 
 require (
 	github.com/go-logr/logr v1.3.0
-	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/projectsyn/lieutenant-operator v1.5.0
 	github.com/stretchr/testify v1.8.4
 	k8s.io/apimachinery v0.28.3
