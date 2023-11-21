@@ -1,0 +1,41 @@
+apiVersion: syn.tools/v1alpha1
+kind: Cluster
+metadata:
+  creationTimestamp: null
+  finalizers:
+  - cluster.lieutenant.syn.tools
+  labels:
+    syn.tools/tenant: t-example-tenant
+  name: c-nameless-dew-1265
+  namespace: lieutenant
+spec:
+  displayName: Example test
+  facts:
+    cloud: none
+    distribution: k3d
+    lieutenant-instance: lieutenant-dev
+    release_channel: fast
+    service_level: zero
+  gitHostKeys: ""
+  gitRepoTemplate:
+    apiSecretRef:
+      name: vshn-gitlab
+    creationPolicy: Adopt
+    deletionPolicy: Archive
+    deployKeys:
+      steward:
+        key: ""
+        type: ssh-rsa
+    displayName: Example test
+    path: syn-dev/cluster-catalogs
+    repoName: c-nameless-dew-1265
+    repoType: auto
+  gitRepoURL: ssh://git@git.vshn.net/syn-dev/cluster-catalogs/c-nameless-dew-1265.git
+  tenantRef:
+    name: t-example-tenant
+status:
+  bootstrapToken:
+    token: HLkftPTjA9kQlo53kMsjARdbHTMKQyTy54nHGL3G
+    validUntil: "2022-09-22T15:37:17Z"
+  facts:
+    kubernetesVersion: '{"buildDate":"2022-06-11T17:27:41Z","compiler":"gc","gitCommit":"0581808f5c160b0c0cafec5b8f20430835f34f44","gitTreeState":"clean","gitVersion":"v1.24.1+k3s1","goVersion":"go1.18.1","major":"1","minor":"24","platform":"linux/arm64"}'

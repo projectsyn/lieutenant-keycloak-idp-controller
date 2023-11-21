@@ -1,0 +1,18 @@
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: prometheusrule
+    app.kubernetes.io/instance: controller-manager-alerts
+    app.kubernetes.io/component: alerts
+    app.kubernetes.io/created-by: lieutenant-keycloak-idp-controller
+    app.kubernetes.io/part-of: lieutenant-keycloak-idp-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: controller-manager-alerts
+  namespace: system
+spec:
+  groups:
+    - name: alerts
+      rules: []
