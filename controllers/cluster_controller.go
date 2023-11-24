@@ -42,12 +42,13 @@ type ClusterReconciler struct {
 	Scheme *runtime.Scheme
 
 	VaultTokenSource    func() (*oauth2.Token, error)
-	VaultClient         *vault.Client
+	VaultAuthClient     VaultPartialAuthClient
+	VaultSecretsClient  VaultPartialSecretsClient
 	VaultRole           string
 	VaultLoginMountPath string
 	VaultKvPath         string
 
-	KeycloakClient     *gocloak.GoCloak
+	KeycloakClient     PartialKeycloakClient
 	KeycloakRealm      string
 	KeycloakLoginRealm string
 	KeycloakUser       string
@@ -84,7 +85,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{Requeue: true}, r.Update(ctx, instance)
 	}
 
-	gcl := r.KeycloakClient
 	token, err := r.keycloakLogin(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to login to keycloak: %w", err)
@@ -112,7 +112,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 	if client == nil {
 		l.Info("Client not found, creating", "client", templatedClient)
-		id, err := gcl.CreateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient)
+		id, err := r.KeycloakClient.CreateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("unable to create client: %w", err)
 		}
@@ -130,7 +130,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		l.Info("No changes to the client detected")
 	} else {
 		l.Info("Updating client", "changes", patch)
-		if err := gcl.UpdateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient); err != nil {
+		if err := r.KeycloakClient.UpdateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient); err != nil {
 			return ctrl.Result{}, fmt.Errorf("unable to update client: %w", err)
 		}
 	}
@@ -165,11 +165,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	})
 	templatedRoles = slices.Compact(templatedRoles)
 
-	if err := r.createClientRoles(ctx, gcl, token.AccessToken, *client.ID, templatedRoles); err != nil {
+	if err := r.createClientRoles(ctx, token.AccessToken, *client.ID, templatedRoles); err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to create client roles: %w", err)
 	}
 
-	actualRoles, err := gcl.GetClientRoles(ctx, token.AccessToken, r.KeycloakRealm, *client.ID, gocloak.GetRoleParams{})
+	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token.AccessToken, r.KeycloakRealm, *client.ID, gocloak.GetRoleParams{})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to get client roles: %w", err)
 	}
@@ -193,7 +193,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			continue
 		}
 
-		g, err := gcl.GetGroupByPath(ctx, token.AccessToken, r.KeycloakRealm, groupPath)
+		g, err := r.KeycloakClient.GetGroupByPath(ctx, token.AccessToken, r.KeycloakRealm, groupPath)
 		if err != nil {
 			var kcErr *gocloak.APIError
 			if errors.As(err, &kcErr) && kcErr.Code == http.StatusNotFound {
@@ -204,7 +204,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		}
 
 		l.Info("Syncing client role group mapping", "group", groupPath, "roles", roles)
-		if err := gcl.AddClientRolesToGroup(ctx, token.AccessToken, r.KeycloakRealm, *client.ID, *g.ID, roles); err != nil {
+		if err := r.KeycloakClient.AddClientRolesToGroup(ctx, token.AccessToken, r.KeycloakRealm, *client.ID, *g.ID, roles); err != nil {
 			return ctrl.Result{}, fmt.Errorf("unable to add client roles to group: %w", err)
 		}
 	}
@@ -263,7 +263,7 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 	}
 	secretPath := vaultSecretPath(instance)
 	mountPath := vault.WithMountPath(r.VaultKvPath)
-	if _, err := r.VaultClient.Secrets.KvV2Delete(ctx, secretPath, mountPath, tokenAuth); err != nil {
+	if _, err := r.VaultSecretsClient.KvV2Delete(ctx, secretPath, mountPath, tokenAuth); err != nil {
 		return fmt.Errorf("unable to delete vault secret: %w", err)
 	}
 
@@ -271,7 +271,7 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 }
 
 // createClientRoles creates the given client roles if they do not exist yet
-func (r *ClusterReconciler) createClientRoles(ctx context.Context, gcl *gocloak.GoCloak, token string, clientId string, roles []roleMapping) error {
+func (r *ClusterReconciler) createClientRoles(ctx context.Context, token string, clientId string, roles []roleMapping) error {
 	l := log.FromContext(ctx).WithName("ClusterReconciler.createClientRoles")
 
 	var clientRoles []string
@@ -281,7 +281,7 @@ func (r *ClusterReconciler) createClientRoles(ctx context.Context, gcl *gocloak.
 	slices.Sort(clientRoles)
 	clientRoles = slices.Compact(clientRoles)
 	for _, role := range clientRoles {
-		id, err := gcl.CreateClientRole(ctx, token, r.KeycloakRealm, clientId, gocloak.Role{
+		id, err := r.KeycloakClient.CreateClientRole(ctx, token, r.KeycloakRealm, clientId, gocloak.Role{
 			Name: &role,
 		})
 		if err != nil {
@@ -352,7 +352,7 @@ func (r *ClusterReconciler) vaultRequestToken(ctx context.Context) (vault.Reques
 	if err != nil {
 		return nil, fmt.Errorf("unable to get vault token: %w", err)
 	}
-	tres, err := r.VaultClient.Auth.KubernetesLogin(
+	tres, err := r.VaultAuthClient.KubernetesLogin(
 		ctx,
 		schema.KubernetesLoginRequest{Jwt: vt.AccessToken, Role: r.VaultRole},
 		vault.WithMountPath(r.VaultLoginMountPath),
@@ -378,7 +378,7 @@ func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieut
 	mountPath := vault.WithMountPath(r.VaultKvPath)
 
 	var existingSecret string
-	res, err := r.VaultClient.Secrets.KvV2Read(ctx, secretPath, mountPath, tokenAuth)
+	res, err := r.VaultSecretsClient.KvV2Read(ctx, secretPath, mountPath, tokenAuth)
 	if err != nil && !vault.IsErrorStatus(err, http.StatusNotFound) {
 		return fmt.Errorf("unable to read vault secret: %w", err)
 	}
@@ -394,7 +394,7 @@ func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieut
 	}
 
 	l.Info("Updating vault secret")
-	_, err = r.VaultClient.Secrets.KvV2Write(
+	_, err = r.VaultSecretsClient.KvV2Write(
 		ctx,
 		secretPath,
 		schema.KvV2WriteRequest{

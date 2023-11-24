@@ -150,7 +150,8 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 
-		VaultClient:         vaultClient,
+		VaultAuthClient:     &vaultClient.Auth,
+		VaultSecretsClient:  &vaultClient.Secrets,
 		VaultTokenSource:    vtSource,
 		VaultRole:           vaultRole,
 		VaultLoginMountPath: vaultLoginMountPath,
