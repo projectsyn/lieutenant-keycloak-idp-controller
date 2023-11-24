@@ -6,15 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/Nerzal/gocloak/v13"
 	"github.com/google/go-jsonnet"
+	"github.com/hashicorp/vault-client-go"
+	"github.com/hashicorp/vault-client-go/schema"
 	lieutenantv1alpha1 "github.com/projectsyn/lieutenant-operator/api/v1alpha1"
 	"github.com/wI2L/jsondiff"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
+	"golang.org/x/oauth2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -33,6 +37,12 @@ type Clock interface {
 type ClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	VaultTokenSource    func() (*oauth2.Token, error)
+	VaultClient         *vault.Client
+	VaultRole           string
+	VaultLoginMountPath string
+	VaultKvPath         string
 
 	KeycloakClient     *gocloak.GoCloak
 	KeycloakRealm      string
@@ -119,6 +129,20 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			return ctrl.Result{}, fmt.Errorf("unable to update client: %w", err)
 		}
 	}
+
+	client, err = r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("unable to get client after creation or updating: %w", err)
+	}
+	if client == nil {
+		return ctrl.Result{}, fmt.Errorf("client %q not found after creation or updating", *templatedClient.ClientID)
+	}
+
+	// Vault secret
+	if client.Secret == nil || *client.Secret == "" {
+		return ctrl.Result{}, fmt.Errorf("client %q has no secret", *templatedClient.ClientID)
+	}
+	r.syncVaultSecret(ctx, instance, *client.Secret)
 
 	// template client roles
 	rolesRaw, err := jvm.EvaluateAnonymousSnippet("client-roles", templates.ClientRolesDefault)
@@ -236,6 +260,61 @@ func (r *ClusterReconciler) findClientByClientId(ctx context.Context, token stri
 	}
 
 	return nil, nil
+}
+
+func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieutenantv1alpha1.Cluster, secret string) error {
+	l := log.FromContext(ctx).WithName("ClusterReconciler.syncVaultSecret")
+
+	vt, err := r.VaultTokenSource()
+	if err != nil {
+		return fmt.Errorf("unable to get vault token: %w", err)
+	}
+
+	tres, err := r.VaultClient.Auth.KubernetesLogin(
+		ctx,
+		schema.KubernetesLoginRequest{Jwt: vt.AccessToken, Role: r.VaultRole},
+		vault.WithMountPath(r.VaultLoginMountPath),
+	)
+	if err != nil {
+		return fmt.Errorf("unable to login to vault: %w", err)
+	}
+	secretPath := path.Join(instance.Spec.TenantRef.Name, instance.Name, "keycloak", "oidcClient")
+	mountPath := vault.WithMountPath(r.VaultKvPath)
+	tokenAuth := vault.WithToken(tres.Auth.ClientToken)
+
+	var existingSecret string
+	res, err := r.VaultClient.Secrets.KvV2Read(ctx, secretPath, mountPath, tokenAuth)
+	if err != nil && !vault.IsErrorStatus(err, http.StatusNotFound) {
+		return fmt.Errorf("unable to read vault secret: %w", err)
+	}
+	if res != nil && res.Data.Data != nil {
+		existingSecret, _ = res.Data.Data["secret"].(string)
+	}
+	if existingSecret == "" {
+		l.Info("No vault secret found")
+	}
+	if existingSecret == secret {
+		l.Info("Vault secret is up to date")
+		return nil
+	}
+
+	l.Info("Updating vault secret")
+	_, err = r.VaultClient.Secrets.KvV2Write(
+		ctx,
+		secretPath,
+		schema.KvV2WriteRequest{
+			Data: map[string]any{
+				"secret": secret,
+			},
+		},
+		mountPath,
+		tokenAuth,
+	)
+	if err != nil {
+		return fmt.Errorf("unable to write vault secret: %w", err)
+	}
+
+	return nil
 }
 
 func (r *ClusterReconciler) loginRealm() string {

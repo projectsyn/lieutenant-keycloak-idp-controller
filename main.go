@@ -10,11 +10,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/Nerzal/gocloak/v13"
+	"github.com/hashicorp/vault-client-go"
 	lieutenantv1alpha1 "github.com/projectsyn/lieutenant-operator/api/v1alpha1"
 	"go.uber.org/multierr"
+	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/transport"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -27,6 +30,9 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+
+	vaultAddress, vaultToken, vaultTokenFile    string
+	vaultRole, vaultLoginMountPath, vaultKvPath string
 
 	keycloakBaseUrl                   string
 	keycloakRealm, keycloakLoginRealm string
@@ -56,6 +62,13 @@ func main() {
 	flag.StringVar(&keycloakUser, "keycloak-user", "", "The Keycloak user to use")
 	flag.StringVar(&keycloakPassword, "keycloak-password", "", "The Keycloak password to use")
 	flag.BoolVar(&enableLegacyWildFlySupport, "keycloak-legacy-wildfly-support", false, "Enable legacy WildFly support for Keycloak")
+
+	flag.StringVar(&vaultAddress, "vault-address", "", "The address of the Vault instance")
+	flag.StringVar(&vaultToken, "vault-token", "", "The Vault token to use. Takes precedence over vault-token-file.")
+	flag.StringVar(&vaultTokenFile, "vault-token-file", "", "The file containing the Vault token to use. Usually `/var/run/secrets/kubernetes.io/serviceaccount/token`")
+	flag.StringVar(&vaultRole, "vault-role", "lieutenant-keycloak-idp-controller", "The Vault role to use.")
+	flag.StringVar(&vaultLoginMountPath, "vault-login-mount-path", "lieutenant", "The Vault mount path to use for login.")
+	flag.StringVar(&vaultKvPath, "vault-kv-path", "clusters/kv", "The Vault KV path to use.")
 
 	opts := zap.Options{
 		Development: true,
@@ -107,13 +120,42 @@ func main() {
 		os.Exit(1)
 	}
 
+	vaultClient, err := vault.New(
+		vault.WithAddress(vaultAddress),
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create vault client")
+		os.Exit(1)
+	}
+
+	var vtSource func() (*oauth2.Token, error)
+	if vaultToken == "" && vaultTokenFile != "" {
+		vtSource = transport.NewCachedFileTokenSource(vaultTokenFile).Token
+	} else if vaultToken != "" {
+		vtSource = func() (*oauth2.Token, error) {
+			return &oauth2.Token{
+				AccessToken: vaultToken,
+			}, nil
+		}
+	} else {
+		setupLog.Error(err, "vault-token or vault-token-file must be set")
+		os.Exit(1)
+	}
+
 	var gcOpts []func(*gocloak.GoCloak)
 	if enableLegacyWildFlySupport {
 		gcOpts = append(gcOpts, gocloak.SetLegacyWildFlySupport())
 	}
 	if err = (&controllers.ClusterReconciler{
-		Client:             mgr.GetClient(),
-		Scheme:             mgr.GetScheme(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+
+		VaultClient:         vaultClient,
+		VaultTokenSource:    vtSource,
+		VaultRole:           vaultRole,
+		VaultLoginMountPath: vaultLoginMountPath,
+		VaultKvPath:         vaultKvPath,
+
 		KeycloakClient:     gocloak.NewClient(keycloakBaseUrl, gcOpts...),
 		KeycloakRealm:      keycloakRealm,
 		KeycloakLoginRealm: keycloakLoginRealm,
