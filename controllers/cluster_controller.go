@@ -24,10 +24,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/projectsyn/lieutenant-keycloak-idp-controller/templates"
 )
+
+const finalizerName = "syn.tools/lieutenant-keycloak-idp-controller"
 
 type Clock interface {
 	Now() time.Time
@@ -67,40 +70,42 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		}
 		return ctrl.Result{}, fmt.Errorf("unable to get Cluster resource: %w", err)
 	}
+	if instance.DeletionTimestamp != nil {
+		if controllerutil.ContainsFinalizer(instance, finalizerName) {
+			if err := r.cleanupClient(ctx, instance); err != nil {
+				return ctrl.Result{}, fmt.Errorf("unable to cleanup client: %w", err)
+			}
+			controllerutil.RemoveFinalizer(instance, finalizerName)
+			return ctrl.Result{}, r.Update(ctx, instance)
+		}
+		return ctrl.Result{}, nil
+	}
+	if updated := controllerutil.AddFinalizer(instance, finalizerName); updated {
+		return ctrl.Result{Requeue: true}, r.Update(ctx, instance)
+	}
 
 	gcl := r.KeycloakClient
-	token, err := gcl.LoginAdmin(ctx, r.KeycloakUser, r.KeycloakPassword, r.loginRealm())
+	token, err := r.keycloakLogin(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to login to keycloak: %w", err)
 	}
 	defer func() {
-		if logoutErr := gcl.LogoutPublicClient(ctx, "admin-cli", r.loginRealm(), token.AccessToken, token.RefreshToken); logoutErr != nil {
+		if logoutErr := r.keycloakLogout(ctx, token); logoutErr != nil {
 			multierr.AppendInto(&err, fmt.Errorf("unable to logout from keycloak: %w", logoutErr))
 		}
 	}()
 
-	jsonnetCtx := map[string]any{
-		"cluster": instance,
-	}
-	jcr, err := json.Marshal(jsonnetCtx)
+	jvm, err := jsonnetVMWithContext(instance)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to marshal jsonnet context: %w", err)
+		return ctrl.Result{}, fmt.Errorf("unable to create jsonnet vm: %w", err)
 	}
-	jvm := jsonnet.MakeVM()
-	jvm.ExtCode("context", string(jcr))
 
 	// Create or updated client
-	cRaw, err := jvm.EvaluateAnonymousSnippet("cluster", templates.ClientDefault)
+	templatedClient, err := templateKeycloakClient(jvm, templates.ClientDefault)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to evaluate jsonnet: %w", err)
+		return ctrl.Result{}, fmt.Errorf("unable to template keycloak client: %w", err)
 	}
-	var templatedClient gocloak.Client
-	if err := json.Unmarshal([]byte(cRaw), &templatedClient); err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to unmarshal jsonnet result: %w", err)
-	}
-	if templatedClient.ClientID == nil || *templatedClient.ClientID == "" {
-		return ctrl.Result{}, fmt.Errorf("`clientId` is empty")
-	}
+
 	client, err := r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to get client: %w", err)
@@ -214,6 +219,57 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieutenantv1alpha1.Cluster) error {
+	l := log.FromContext(ctx).WithName("ClusterReconciler.cleanup")
+
+	jvm, err := jsonnetVMWithContext(instance)
+	if err != nil {
+		return fmt.Errorf("unable to create jsonnet vm: %w", err)
+	}
+
+	// Create or updated client
+	templatedClient, err := templateKeycloakClient(jvm, templates.ClientDefault)
+	if err != nil {
+		return fmt.Errorf("unable to template keycloak client: %w", err)
+	}
+
+	token, err := r.keycloakLogin(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to login to keycloak: %w", err)
+	}
+	defer func() {
+		if logoutErr := r.keycloakLogout(ctx, token); logoutErr != nil {
+			multierr.AppendInto(&err, fmt.Errorf("unable to logout from keycloak: %w", logoutErr))
+		}
+	}()
+
+	client, err := r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
+	if err != nil {
+		return fmt.Errorf("unable to get client: %w", err)
+	}
+	if client == nil {
+		l.Info("Client not found, skipping cleanup")
+		return nil
+	}
+	l.Info("Client found, deleting", "client", client.ID)
+	if err := r.KeycloakClient.DeleteClient(ctx, token.AccessToken, r.KeycloakRealm, *client.ID); err != nil {
+		return fmt.Errorf("unable to delete client: %w", err)
+	}
+
+	// delete vault secret
+	tokenAuth, err := r.vaultRequestToken(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to login to vault: %w", err)
+	}
+	secretPath := vaultSecretPath(instance)
+	mountPath := vault.WithMountPath(r.VaultKvPath)
+	if _, err := r.VaultClient.Secrets.KvV2Delete(ctx, secretPath, mountPath, tokenAuth); err != nil {
+		return fmt.Errorf("unable to delete vault secret: %w", err)
+	}
+
+	return nil
+}
+
 // createClientRoles creates the given client roles if they do not exist yet
 func (r *ClusterReconciler) createClientRoles(ctx context.Context, gcl *gocloak.GoCloak, token string, clientId string, roles []roleMapping) error {
 	l := log.FromContext(ctx).WithName("ClusterReconciler.createClientRoles")
@@ -264,25 +320,62 @@ func (r *ClusterReconciler) findClientByClientId(ctx context.Context, token stri
 	return nil, nil
 }
 
-func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieutenantv1alpha1.Cluster, secret string) error {
-	l := log.FromContext(ctx).WithName("ClusterReconciler.syncVaultSecret")
+func jsonnetVMWithContext(instance *lieutenantv1alpha1.Cluster) (*jsonnet.VM, error) {
+	jcr, err := json.Marshal(map[string]any{
+		"cluster": instance,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal jsonnet context: %w", err)
+	}
+	jvm := jsonnet.MakeVM()
+	jvm.ExtCode("context", string(jcr))
+	return jvm, nil
+}
 
+func templateKeycloakClient(jvm *jsonnet.VM, template string) (gocloak.Client, error) {
+	cRaw, err := jvm.EvaluateAnonymousSnippet("cluster", templates.ClientDefault)
+	if err != nil {
+		return gocloak.Client{}, fmt.Errorf("unable to evaluate jsonnet: %w", err)
+	}
+	var c gocloak.Client
+	if err := json.Unmarshal([]byte(cRaw), &c); err != nil {
+		return c, fmt.Errorf("unable to unmarshal `cluster` jsonnet result: %w", err)
+	}
+	if c.ClientID == nil || *c.ClientID == "" {
+		return c, fmt.Errorf("invalid cluster template: `clientId` is empty")
+	}
+	return c, nil
+}
+
+func (r *ClusterReconciler) vaultRequestToken(ctx context.Context) (vault.RequestOption, error) {
 	vt, err := r.VaultTokenSource()
 	if err != nil {
-		return fmt.Errorf("unable to get vault token: %w", err)
+		return nil, fmt.Errorf("unable to get vault token: %w", err)
 	}
-
 	tres, err := r.VaultClient.Auth.KubernetesLogin(
 		ctx,
 		schema.KubernetesLoginRequest{Jwt: vt.AccessToken, Role: r.VaultRole},
 		vault.WithMountPath(r.VaultLoginMountPath),
 	)
 	if err != nil {
+		return nil, fmt.Errorf("unable to login to vault: %w", err)
+	}
+	return vault.WithToken(tres.Auth.ClientToken), nil
+}
+
+func vaultSecretPath(instance *lieutenantv1alpha1.Cluster) string {
+	return path.Join(instance.Spec.TenantRef.Name, instance.Name, "keycloak", "oidcClient")
+}
+
+func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieutenantv1alpha1.Cluster, secret string) error {
+	l := log.FromContext(ctx).WithName("ClusterReconciler.syncVaultSecret")
+
+	tokenAuth, err := r.vaultRequestToken(ctx)
+	if err != nil {
 		return fmt.Errorf("unable to login to vault: %w", err)
 	}
-	secretPath := path.Join(instance.Spec.TenantRef.Name, instance.Name, "keycloak", "oidcClient")
+	secretPath := vaultSecretPath(instance)
 	mountPath := vault.WithMountPath(r.VaultKvPath)
-	tokenAuth := vault.WithToken(tres.Auth.ClientToken)
 
 	var existingSecret string
 	res, err := r.VaultClient.Secrets.KvV2Read(ctx, secretPath, mountPath, tokenAuth)
@@ -317,6 +410,14 @@ func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieut
 	}
 
 	return nil
+}
+
+func (r *ClusterReconciler) keycloakLogin(ctx context.Context) (*gocloak.JWT, error) {
+	return r.KeycloakClient.LoginAdmin(ctx, r.KeycloakUser, r.KeycloakPassword, r.loginRealm())
+}
+
+func (r *ClusterReconciler) keycloakLogout(ctx context.Context, token *gocloak.JWT) error {
+	return r.KeycloakClient.LogoutPublicClient(ctx, "admin-cli", r.loginRealm(), token.AccessToken, token.RefreshToken)
 }
 
 func (r *ClusterReconciler) loginRealm() string {
