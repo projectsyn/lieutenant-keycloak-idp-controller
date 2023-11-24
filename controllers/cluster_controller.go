@@ -142,7 +142,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	if client.Secret == nil || *client.Secret == "" {
 		return ctrl.Result{}, fmt.Errorf("client %q has no secret", *templatedClient.ClientID)
 	}
-	r.syncVaultSecret(ctx, instance, *client.Secret)
+	if err := r.syncVaultSecret(ctx, instance, *client.Secret); err != nil {
+		return ctrl.Result{}, fmt.Errorf("unable to sync vault secret: %w", err)
+	}
 
 	// template client roles
 	rolesRaw, err := jvm.EvaluateAnonymousSnippet("client-roles", templates.ClientRolesDefault)
