@@ -40,6 +40,8 @@ var (
 	enableLegacyWildFlySupport        bool
 
 	clientTemplateFile, clientRoleMappingTemplateFile string
+
+	keycloakClientIgnorePaths stringSliceFlag
 )
 
 func init() {
@@ -74,6 +76,8 @@ func main() {
 
 	flag.StringVar(&clientTemplateFile, "client-template-file", "templates/client.jsonnet", "The file containing the client template to use.")
 	flag.StringVar(&clientRoleMappingTemplateFile, "client-role-mapping-template-file", "templates/client-roles.jsonnet", "The file containing the client role mapping template to use.")
+
+	flag.Var(&keycloakClientIgnorePaths, "keycloak-client-ignore-paths", "A list of JSON Pointer strings (RFC 6901) to ignore when checking if changes to the Keycloak client are relevant. Can be specified multiple times. See https://pkg.go.dev/github.com/wI2L/jsondiff@v0.5.0#Ignores")
 
 	opts := zap.Options{
 		Development: true,
@@ -181,6 +185,8 @@ func main() {
 
 		ClientTemplate:            string(ct),
 		ClientRoleMappingTemplate: string(crmt),
+
+		KeycloakClientIgnorePaths: keycloakClientIgnorePaths,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
 		os.Exit(1)
@@ -201,4 +207,15 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+type stringSliceFlag []string
+
+func (f stringSliceFlag) String() string {
+	return fmt.Sprint([]string(f))
+}
+
+func (f *stringSliceFlag) Set(value string) error {
+	*f = append(*f, value)
+	return nil
 }

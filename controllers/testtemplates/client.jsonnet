@@ -7,5 +7,6 @@ local context = std.extVar('context');
   redirectUris: [ '/oauth2/callback' ],
   attributes: {
     custom: 'attribute',
+    ignored: 'attribute',
   },
 }

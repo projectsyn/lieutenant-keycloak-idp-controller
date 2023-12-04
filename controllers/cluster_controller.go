@@ -54,6 +54,8 @@ type ClusterReconciler struct {
 
 	ClientTemplate            string
 	ClientRoleMappingTemplate string
+
+	KeycloakClientIgnorePaths []string
 }
 
 //+kubebuilder:rbac:groups=syn.tools,resources=clusters,verbs=get;list;watch
@@ -123,7 +125,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 	l.Info("Client found, updating", "client", client.ID)
 	templatedClient.ID = client.ID
-	patch, err := jsondiff.Compare(client, templatedClient, jsondiff.Ignores("/secret"))
+
+	ignores := append([]string{"/secret"}, r.KeycloakClientIgnorePaths...)
+	patch, err := jsondiff.Compare(client, templatedClient, jsondiff.Ignores(ignores...))
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to compare existing and templated clients: %w", err)
 	}
