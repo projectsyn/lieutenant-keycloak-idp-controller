@@ -26,8 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/projectsyn/lieutenant-keycloak-idp-controller/templates"
 )
 
 const finalizerName = "syn.tools/lieutenant-keycloak-idp-controller"
@@ -53,6 +51,9 @@ type ClusterReconciler struct {
 	KeycloakLoginRealm string
 	KeycloakUser       string
 	KeycloakPassword   string
+
+	ClientTemplate            string
+	ClientRoleMappingTemplate string
 }
 
 //+kubebuilder:rbac:groups=syn.tools,resources=clusters,verbs=get;list;watch
@@ -101,7 +102,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	// Create or updated client
-	templatedClient, err := templateKeycloakClient(jvm, templates.ClientDefault)
+	templatedClient, err := r.templateKeycloakClient(jvm)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to template keycloak client: %w", err)
 	}
@@ -152,7 +153,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	// template client roles
-	rolesRaw, err := jvm.EvaluateAnonymousSnippet("client-roles", templates.ClientRolesDefault)
+	rolesRaw, err := jvm.EvaluateAnonymousSnippet("client-roles", r.ClientRoleMappingTemplate)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to evaluate client-roles jsonnet: %w", err)
 	}
@@ -219,7 +220,7 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieutenantv1alpha1.Cluster) error {
+func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieutenantv1alpha1.Cluster) (err error) {
 	l := log.FromContext(ctx).WithName("ClusterReconciler.cleanup")
 
 	jvm, err := jsonnetVMWithContext(instance)
@@ -227,8 +228,8 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 		return fmt.Errorf("unable to create jsonnet vm: %w", err)
 	}
 
-	// Create or updated client
-	templatedClient, err := templateKeycloakClient(jvm, templates.ClientDefault)
+	// call into jsonnet to get the templated client id
+	templatedClient, err := r.templateKeycloakClient(jvm)
 	if err != nil {
 		return fmt.Errorf("unable to template keycloak client: %w", err)
 	}
@@ -281,6 +282,7 @@ func (r *ClusterReconciler) createClientRoles(ctx context.Context, token string,
 	slices.Sort(clientRoles)
 	clientRoles = slices.Compact(clientRoles)
 	for _, role := range clientRoles {
+		role := role
 		id, err := r.KeycloakClient.CreateClientRole(ctx, token, r.KeycloakRealm, clientId, gocloak.Role{
 			Name: &role,
 		})
@@ -332,8 +334,8 @@ func jsonnetVMWithContext(instance *lieutenantv1alpha1.Cluster) (*jsonnet.VM, er
 	return jvm, nil
 }
 
-func templateKeycloakClient(jvm *jsonnet.VM, template string) (gocloak.Client, error) {
-	cRaw, err := jvm.EvaluateAnonymousSnippet("cluster", templates.ClientDefault)
+func (r *ClusterReconciler) templateKeycloakClient(jvm *jsonnet.VM) (gocloak.Client, error) {
+	cRaw, err := jvm.EvaluateAnonymousSnippet("client", r.ClientTemplate)
 	if err != nil {
 		return gocloak.Client{}, fmt.Errorf("unable to evaluate jsonnet: %w", err)
 	}

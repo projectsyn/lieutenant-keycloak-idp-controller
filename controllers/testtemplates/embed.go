@@ -1,11 +1,11 @@
-package templates
+package testtemplates
 
 import (
 	_ "embed"
 )
 
 //go:embed client.jsonnet
-var ClientDefault string
+var Client string
 
 //go:embed client-roles.jsonnet
-var ClientRolesDefault string
+var ClientRoles string

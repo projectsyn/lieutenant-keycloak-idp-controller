@@ -38,6 +38,8 @@ var (
 	keycloakRealm, keycloakLoginRealm string
 	keycloakUser, keycloakPassword    string
 	enableLegacyWildFlySupport        bool
+
+	clientTemplateFile, clientRoleMappingTemplateFile string
 )
 
 func init() {
@@ -69,6 +71,9 @@ func main() {
 	flag.StringVar(&vaultRole, "vault-role", "lieutenant-keycloak-idp-controller", "The Vault role to use.")
 	flag.StringVar(&vaultLoginMountPath, "vault-login-mount-path", "lieutenant", "The Vault mount path to use for login.")
 	flag.StringVar(&vaultKvPath, "vault-kv-path", "clusters/kv", "The Vault KV path to use.")
+
+	flag.StringVar(&clientTemplateFile, "client-template-file", "templates/client.jsonnet", "The file containing the client template to use.")
+	flag.StringVar(&clientRoleMappingTemplateFile, "client-role-mapping-template-file", "templates/client-roles.jsonnet", "The file containing the client role mapping template to use.")
 
 	opts := zap.Options{
 		Development: true,
@@ -142,6 +147,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	ct, err := os.ReadFile(clientTemplateFile)
+	if err != nil {
+		setupLog.Error(err, "unable to read client template file")
+		os.Exit(1)
+	}
+	crmt, err := os.ReadFile(clientRoleMappingTemplateFile)
+	if err != nil {
+		setupLog.Error(err, "unable to read client role mapping template file")
+		os.Exit(1)
+	}
+
 	var gcOpts []func(*gocloak.GoCloak)
 	if enableLegacyWildFlySupport {
 		gcOpts = append(gcOpts, gocloak.SetLegacyWildFlySupport())
@@ -162,6 +178,9 @@ func main() {
 		KeycloakLoginRealm: keycloakLoginRealm,
 		KeycloakUser:       keycloakUser,
 		KeycloakPassword:   keycloakPassword,
+
+		ClientTemplate:            string(ct),
+		ClientRoleMappingTemplate: string(crmt),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
 		os.Exit(1)
