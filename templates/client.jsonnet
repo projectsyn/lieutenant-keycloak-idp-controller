@@ -1,7 +1,8 @@
 local context = std.extVar('context');
+local vars = import 'vars.jsonnet';
 
 {
-  clientId: 'cluster_%s' % context.cluster.metadata.name,
+  clientId: '%s%s' % [ vars.clientPrefix, context.cluster.metadata.name ],
   name: '%s (%s)' % [ context.cluster.spec.displayName, context.cluster.metadata.name ],
   description: '',
   rootUrl: 'https://oauth-openshift.apps.%s.dev' % context.cluster.metadata.name,

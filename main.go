@@ -40,6 +40,7 @@ var (
 	enableLegacyWildFlySupport        bool
 
 	clientTemplateFile, clientRoleMappingTemplateFile string
+	templateLibraryPaths                              stringSliceFlag
 
 	keycloakClientIgnorePaths stringSliceFlag
 )
@@ -76,6 +77,7 @@ func main() {
 
 	flag.StringVar(&clientTemplateFile, "client-template-file", "templates/client.jsonnet", "The file containing the client template to use.")
 	flag.StringVar(&clientRoleMappingTemplateFile, "client-role-mapping-template-file", "templates/client-roles.jsonnet", "The file containing the client role mapping template to use.")
+	flag.Var(&templateLibraryPaths, "template-library-path", "A list of paths to search for Jsonnet libraries. Can be specified multiple times.")
 
 	flag.Var(&keycloakClientIgnorePaths, "keycloak-client-ignore-paths", "A list of JSON Pointer strings (RFC 6901) to ignore when checking if changes to the Keycloak client are relevant. Can be specified multiple times. See https://pkg.go.dev/github.com/wI2L/jsondiff@v0.5.0#Ignores")
 
@@ -151,13 +153,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	ct, err := os.ReadFile(clientTemplateFile)
-	if err != nil {
+	if _, err := os.ReadFile(clientTemplateFile); err != nil {
 		setupLog.Error(err, "unable to read client template file")
 		os.Exit(1)
 	}
-	crmt, err := os.ReadFile(clientRoleMappingTemplateFile)
-	if err != nil {
+	if _, err := os.ReadFile(clientRoleMappingTemplateFile); err != nil {
 		setupLog.Error(err, "unable to read client role mapping template file")
 		os.Exit(1)
 	}
@@ -183,8 +183,9 @@ func main() {
 		KeycloakUser:       keycloakUser,
 		KeycloakPassword:   keycloakPassword,
 
-		ClientTemplate:            string(ct),
-		ClientRoleMappingTemplate: string(crmt),
+		ClientTemplateFile:            clientTemplateFile,
+		ClientRoleMappingTemplateFile: clientRoleMappingTemplateFile,
+		TemplateLibraryPaths:          templateLibraryPaths,
 
 		KeycloakClientIgnorePaths: keycloakClientIgnorePaths,
 	}).SetupWithManager(mgr); err != nil {

@@ -5,6 +5,8 @@ import (
 	"crypto/md5"
 	"fmt"
 	"net/http"
+	"os"
+	"path"
 	"slices"
 	"testing"
 
@@ -70,6 +72,9 @@ func Test_ClusterReconciler_Reconcile_AddFinalizer(t *testing.T) {
 
 func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 	ctx := log.IntoContext(context.Background(), testr.New(t))
+	tpld := t.TempDir()
+	require.NoError(t, os.WriteFile(path.Join(tpld, "client.jsonnet"), []byte(testtemplates.Client), 0644))
+	require.NoError(t, os.WriteFile(path.Join(tpld, "crm.jsonnet"), []byte(testtemplates.ClientRoles), 0644))
 
 	mctrl := gomock.NewController(t)
 	defer mctrl.Finish()
@@ -117,8 +122,8 @@ func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 		VaultAuthClient:    mockVaultAuth,
 		VaultSecretsClient: mockVaultSecrets,
 
-		ClientTemplate:            testtemplates.Client,
-		ClientRoleMappingTemplate: testtemplates.ClientRoles,
+		ClientTemplateFile:            path.Join(tpld, "client.jsonnet"),
+		ClientRoleMappingTemplateFile: path.Join(tpld, "crm.jsonnet"),
 
 		KeycloakClientIgnorePaths: []string{"/attributes/ignored"},
 	}

@@ -53,8 +53,9 @@ type ClusterReconciler struct {
 	KeycloakUser       string
 	KeycloakPassword   string
 
-	ClientTemplate            string
-	ClientRoleMappingTemplate string
+	ClientTemplateFile            string
+	ClientRoleMappingTemplateFile string
+	TemplateLibraryPaths          []string
 
 	KeycloakClientIgnorePaths []string
 }
@@ -99,7 +100,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		}
 	}()
 
-	jvm, err := jsonnetVMWithContext(instance)
+	jvm, err := r.jsonnetVMWithContext(instance)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to create jsonnet vm: %w", err)
 	}
@@ -158,7 +159,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	// template client roles
-	rolesRaw, err := jvm.EvaluateAnonymousSnippet("client-roles", r.ClientRoleMappingTemplate)
+	rolesRaw, err := jvm.EvaluateFile(r.ClientRoleMappingTemplateFile)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to evaluate client-roles jsonnet: %w", err)
 	}
@@ -192,7 +193,7 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieutenantv1alpha1.Cluster) (err error) {
 	l := log.FromContext(ctx).WithName("ClusterReconciler.cleanup")
 
-	jvm, err := jsonnetVMWithContext(instance)
+	jvm, err := r.jsonnetVMWithContext(instance)
 	if err != nil {
 		return fmt.Errorf("unable to create jsonnet vm: %w", err)
 	}
@@ -379,7 +380,7 @@ func (r *ClusterReconciler) findClientByClientId(ctx context.Context, token stri
 	return nil, nil
 }
 
-func jsonnetVMWithContext(instance *lieutenantv1alpha1.Cluster) (*jsonnet.VM, error) {
+func (r *ClusterReconciler) jsonnetVMWithContext(instance *lieutenantv1alpha1.Cluster) (*jsonnet.VM, error) {
 	jcr, err := json.Marshal(map[string]any{
 		"cluster": instance,
 	})
@@ -388,11 +389,14 @@ func jsonnetVMWithContext(instance *lieutenantv1alpha1.Cluster) (*jsonnet.VM, er
 	}
 	jvm := jsonnet.MakeVM()
 	jvm.ExtCode("context", string(jcr))
+	jvm.Importer(&jsonnet.FileImporter{
+		JPaths: r.TemplateLibraryPaths,
+	})
 	return jvm, nil
 }
 
 func (r *ClusterReconciler) templateKeycloakClient(jvm *jsonnet.VM) (gocloak.Client, error) {
-	cRaw, err := jvm.EvaluateAnonymousSnippet("client", r.ClientTemplate)
+	cRaw, err := jvm.EvaluateFile(r.ClientTemplateFile)
 	if err != nil {
 		return gocloak.Client{}, fmt.Errorf("unable to evaluate jsonnet: %w", err)
 	}
