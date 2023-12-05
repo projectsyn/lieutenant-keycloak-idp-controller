@@ -22,6 +22,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -267,7 +268,9 @@ func (r *ClusterReconciler) syncClientRoles(ctx context.Context, token string, c
 		l.Info("Client role created", "role", role, "id", id)
 	}
 
-	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token, r.KeycloakRealm, clientId, gocloak.GetRoleParams{})
+	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token, r.KeycloakRealm, clientId, gocloak.GetRoleParams{
+		Max: ptr.To(-1),
+	})
 	if err != nil {
 		return fmt.Errorf("unable to get client roles: %w", err)
 	}
@@ -291,7 +294,9 @@ func (r *ClusterReconciler) syncClientRoles(ctx context.Context, token string, c
 func (r *ClusterReconciler) syncClientRoleGroupMappings(ctx context.Context, token string, clientId string, roles []roleMapping) error {
 	l := log.FromContext(ctx).WithName("ClusterReconciler.syncClientRoleGroupMappings")
 
-	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token, r.KeycloakRealm, clientId, gocloak.GetRoleParams{})
+	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token, r.KeycloakRealm, clientId, gocloak.GetRoleParams{
+		Max: ptr.To(-1),
+	})
 	if err != nil {
 		return fmt.Errorf("unable to get client roles: %w", err)
 	}
@@ -360,6 +365,7 @@ func (r *ClusterReconciler) findClientByClientId(ctx context.Context, token stri
 		realm,
 		gocloak.GetClientsParams{
 			ClientID: &clientId,
+			Max:      ptr.To(-1),
 		},
 	)
 	if err != nil {
