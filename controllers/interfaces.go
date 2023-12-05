@@ -24,8 +24,11 @@ type PartialKeycloakClient interface {
 	GetClientRoles(ctx context.Context, accessToken, realm, idOfClient string, params gocloak.GetRoleParams) ([]*gocloak.Role, error)
 	AddClientRolesToGroup(ctx context.Context, token, realm, idOfClient, groupID string, roles []gocloak.Role) error
 	CreateClientRole(ctx context.Context, accessToken, realm, idOfClient string, role gocloak.Role) (string, error)
+	DeleteClientRole(ctx context.Context, token, realm, idOfClient, roleName string) error
 
 	GetGroupByPath(ctx context.Context, token, realm, groupPath string) (*gocloak.Group, error)
+	GetGroupsByClientRole(ctx context.Context, token, realm, roleName, clientID string) ([]*gocloak.Group, error)
+	DeleteClientRoleFromGroup(ctx context.Context, token, realm, idOfClient, groupID string, roles []gocloak.Role) error
 }
 
 // VaultPartialAuthClient is a subset of the vault auth methods that are used by the controller

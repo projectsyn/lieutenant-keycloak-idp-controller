@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	lieutenantv1alpha1 "github.com/projectsyn/lieutenant-operator/api/v1alpha1"
 	"github.com/wI2L/jsondiff"
 	"go.uber.org/multierr"
-	"golang.org/x/exp/slices"
 	"golang.org/x/oauth2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -170,48 +170,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	})
 	templatedRoles = slices.Compact(templatedRoles)
 
-	if err := r.createClientRoles(ctx, token.AccessToken, *client.ID, templatedRoles); err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to create client roles: %w", err)
+	if err := r.syncClientRoles(ctx, token.AccessToken, *client.ID, templatedRoles); err != nil {
+		return ctrl.Result{}, fmt.Errorf("unable to sync client roles: %w", err)
 	}
 
-	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token.AccessToken, r.KeycloakRealm, *client.ID, gocloak.GetRoleParams{})
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to get client roles: %w", err)
-	}
-
-	groups := make(map[string][]gocloak.Role)
-	for _, role := range templatedRoles {
-		if role.Group == "" {
-			continue
-		}
-		ri := slices.IndexFunc(actualRoles, func(r *gocloak.Role) bool {
-			return *r.Name == role.Role
-		})
-		if ri == -1 {
-			return ctrl.Result{}, fmt.Errorf("unable to find role %q", role.Role)
-		}
-		groups[role.Group] = append(groups[role.Group], *actualRoles[ri])
-	}
-	for groupPath, roles := range groups {
-		if len(roles) == 0 {
-			l.Info("No roles to map, skipping", "group", groupPath)
-			continue
-		}
-
-		g, err := r.KeycloakClient.GetGroupByPath(ctx, token.AccessToken, r.KeycloakRealm, groupPath)
-		if err != nil {
-			var kcErr *gocloak.APIError
-			if errors.As(err, &kcErr) && kcErr.Code == http.StatusNotFound {
-				l.Info("Group not found, skipping mapping", "group", groupPath)
-				continue
-			}
-			return ctrl.Result{}, fmt.Errorf("unable to get group: %w", err)
-		}
-
-		l.Info("Syncing client role group mapping", "group", groupPath, "roles", roles)
-		if err := r.KeycloakClient.AddClientRolesToGroup(ctx, token.AccessToken, r.KeycloakRealm, *client.ID, *g.ID, roles); err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to add client roles to group: %w", err)
-		}
+	if err := r.syncClientRoleGroupMappings(ctx, token.AccessToken, *client.ID, templatedRoles); err != nil {
+		return ctrl.Result{}, fmt.Errorf("unable to sync client role group mappings: %w", err)
 	}
 
 	return ctrl.Result{}, nil
@@ -275,9 +239,10 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 	return nil
 }
 
-// createClientRoles creates the given client roles if they do not exist yet
-func (r *ClusterReconciler) createClientRoles(ctx context.Context, token string, clientId string, roles []roleMapping) error {
-	l := log.FromContext(ctx).WithName("ClusterReconciler.createClientRoles")
+// syncClientRoles creates the given client roles if they do not exist yet
+// and deletes all roles that are not in the given list.
+func (r *ClusterReconciler) syncClientRoles(ctx context.Context, token string, clientId string, roles []roleMapping) error {
+	l := log.FromContext(ctx).WithName("ClusterReconciler.syncClientRoles")
 
 	var clientRoles []string
 	for _, role := range roles {
@@ -300,6 +265,88 @@ func (r *ClusterReconciler) createClientRoles(ctx context.Context, token string,
 			return fmt.Errorf("keycloak error: %w", err)
 		}
 		l.Info("Client role created", "role", role, "id", id)
+	}
+
+	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token, r.KeycloakRealm, clientId, gocloak.GetRoleParams{})
+	if err != nil {
+		return fmt.Errorf("unable to get client roles: %w", err)
+	}
+
+	for _, role := range actualRoles {
+		role := role
+		if slices.Contains(clientRoles, *role.Name) {
+			continue
+		}
+		l.Info("Deleting client role", "role", *role.Name, "id", *role.ID)
+		if err := r.KeycloakClient.DeleteClientRole(ctx, token, r.KeycloakRealm, clientId, *role.Name); err != nil {
+			return fmt.Errorf("unable to delete client role: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// syncClientRoleGroupMappings creates the given client role group mappings if they do not exist yet
+// and deletes all mappings that are not in the given list.
+func (r *ClusterReconciler) syncClientRoleGroupMappings(ctx context.Context, token string, clientId string, roles []roleMapping) error {
+	l := log.FromContext(ctx).WithName("ClusterReconciler.syncClientRoleGroupMappings")
+
+	actualRoles, err := r.KeycloakClient.GetClientRoles(ctx, token, r.KeycloakRealm, clientId, gocloak.GetRoleParams{})
+	if err != nil {
+		return fmt.Errorf("unable to get client roles: %w", err)
+	}
+
+	groups := make(map[string][]gocloak.Role)
+	for _, role := range roles {
+		if role.Group == "" {
+			continue
+		}
+		ri := slices.IndexFunc(actualRoles, func(r *gocloak.Role) bool {
+			return *r.Name == role.Role
+		})
+		if ri == -1 {
+			return fmt.Errorf("unable to find role %q", role.Role)
+		}
+		groups[role.Group] = append(groups[role.Group], *actualRoles[ri])
+	}
+	for groupPath, roles := range groups {
+		if len(roles) == 0 {
+			l.Info("No roles to map, skipping", "group", groupPath)
+			continue
+		}
+
+		g, err := r.KeycloakClient.GetGroupByPath(ctx, token, r.KeycloakRealm, groupPath)
+		if err != nil {
+			var kcErr *gocloak.APIError
+			if errors.As(err, &kcErr) && kcErr.Code == http.StatusNotFound {
+				l.Info("Group not found, skipping mapping", "group", groupPath)
+				continue
+			}
+			return fmt.Errorf("unable to get group: %w", err)
+		}
+
+		l.Info("Syncing client role group mapping", "group", groupPath, "roles", roles)
+		if err := r.KeycloakClient.AddClientRolesToGroup(ctx, token, r.KeycloakRealm, clientId, *g.ID, roles); err != nil {
+			return fmt.Errorf("unable to add client roles to group: %w", err)
+		}
+	}
+
+	l.Info("Looking for client role group mappings to delete")
+
+	for _, role := range actualRoles {
+		groups, err := r.KeycloakClient.GetGroupsByClientRole(ctx, token, r.KeycloakRealm, *role.Name, clientId)
+		if err != nil {
+			return fmt.Errorf("unable to get groups by client role: %w", err)
+		}
+		for _, group := range groups {
+			if slices.ContainsFunc(roles, func(r roleMapping) bool { return r.Group == *group.Path }) {
+				continue
+			}
+			l.Info("Deleting client role group mapping", "role", *role.Name, "group", *group.Path)
+			if err := r.KeycloakClient.DeleteClientRoleFromGroup(ctx, token, r.KeycloakRealm, clientId, *group.ID, []gocloak.Role{*role}); err != nil {
+				return fmt.Errorf("unable to delete client role: %w", err)
+			}
+		}
 	}
 
 	return nil

@@ -97,6 +97,34 @@ func (mr *MockPartialKeycloakClientMockRecorder) DeleteClient(arg0, arg1, arg2, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClient), arg0, arg1, arg2, arg3)
 }
 
+// DeleteClientRole mocks base method.
+func (m *MockPartialKeycloakClient) DeleteClientRole(arg0 context.Context, arg1, arg2, arg3, arg4 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteClientRole", arg0, arg1, arg2, arg3, arg4)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteClientRole indicates an expected call of DeleteClientRole.
+func (mr *MockPartialKeycloakClientMockRecorder) DeleteClientRole(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClientRole), arg0, arg1, arg2, arg3, arg4)
+}
+
+// DeleteClientRoleFromGroup mocks base method.
+func (m *MockPartialKeycloakClient) DeleteClientRoleFromGroup(arg0 context.Context, arg1, arg2, arg3, arg4 string, arg5 []gocloak.Role) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteClientRoleFromGroup", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteClientRoleFromGroup indicates an expected call of DeleteClientRoleFromGroup.
+func (mr *MockPartialKeycloakClientMockRecorder) DeleteClientRoleFromGroup(arg0, arg1, arg2, arg3, arg4, arg5 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClientRoleFromGroup", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClientRoleFromGroup), arg0, arg1, arg2, arg3, arg4, arg5)
+}
+
 // GetClientRoles mocks base method.
 func (m *MockPartialKeycloakClient) GetClientRoles(arg0 context.Context, arg1, arg2, arg3 string, arg4 gocloak.GetRoleParams) ([]*gocloak.Role, error) {
 	m.ctrl.T.Helper()
@@ -140,6 +168,21 @@ func (m *MockPartialKeycloakClient) GetGroupByPath(arg0 context.Context, arg1, a
 func (mr *MockPartialKeycloakClientMockRecorder) GetGroupByPath(arg0, arg1, arg2, arg3 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroupByPath", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetGroupByPath), arg0, arg1, arg2, arg3)
+}
+
+// GetGroupsByClientRole mocks base method.
+func (m *MockPartialKeycloakClient) GetGroupsByClientRole(arg0 context.Context, arg1, arg2, arg3, arg4 string) ([]*gocloak.Group, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGroupsByClientRole", arg0, arg1, arg2, arg3, arg4)
+	ret0, _ := ret[0].([]*gocloak.Group)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetGroupsByClientRole indicates an expected call of GetGroupsByClientRole.
+func (mr *MockPartialKeycloakClientMockRecorder) GetGroupsByClientRole(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroupsByClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetGroupsByClientRole), arg0, arg1, arg2, arg3, arg4)
 }
 
 // LoginAdmin mocks base method.

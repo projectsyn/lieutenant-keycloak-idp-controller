@@ -41,6 +41,10 @@ const (
 	keycloakAccessToken = "accessToken"
 )
 
+var (
+	rolesInTemplate = []string{"restricted-access", "openshiftroot", "openshiftrootswissonly"}
+)
+
 func Test_ClusterReconciler_Reconcile_AddFinalizer(t *testing.T) {
 	ctx := log.IntoContext(context.Background(), testr.New(t))
 
@@ -95,6 +99,9 @@ func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 	tkco.groups = append(tkco.groups, gocloak.Group{
 		ID:   ptr.To("b45ec6e5-edfc-4823-93f0-9f3012a42f64"),
 		Path: ptr.To("/LDAP/VSHN openshiftroot"),
+	}, gocloak.Group{
+		ID:   ptr.To("10f810e0-54b8-45af-bbc4-a721d34be7e4"),
+		Path: ptr.To("/LDAP/VSHN AdditionalGroupOfUsers"),
 	})
 
 	subject := &ClusterReconciler{
@@ -124,15 +131,7 @@ func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 		createdClient := tkco.clients[0]
 		require.Equal(t, "cluster_test", *createdClient.ClientID, "should have created client with correct name")
 
-		createdClientRoles := tkco.clientRoles[*createdClient.ID]
-		rn := make([]string, len(createdClientRoles))
-		for i, r := range createdClientRoles {
-			rn[i] = *r.Name
-		}
-		require.ElementsMatch(t,
-			[]string{"restricted-access", "openshiftroot", "openshiftrootswissonly"},
-			rn,
-			"should have created client roles")
+		requireClientRolesForClient(t, tkco, *createdClient.ID, rolesInTemplate...)
 
 		require.Len(t, tkco.clientRolesToGroupsMapping, 1)
 		require.ElementsMatch(t,
@@ -171,6 +170,31 @@ func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 			map[string]string{"custom": "attribute", "ignored": "changed"},
 			*updatedClient.Attributes,
 			"changes to ignored attributes should not trigger a client update")
+
+		// Add a new client role that should be deleted on next reconcile
+		newRole := "additional-role"
+		_, err = mockKeycloak.CreateClientRole(ctx, keycloakAccessToken, keycloakRealm, *createdClient.ID, gocloak.Role{Name: ptr.To(newRole)})
+		require.NoError(t, err)
+		requireClientRolesForClient(t, tkco, *createdClient.ID, append(rolesInTemplate, newRole)...)
+		// add a random mapping that should be deleted on next reconcile
+		require.NoError(t,
+			mockKeycloak.AddClientRolesToGroup(ctx,
+				keycloakAccessToken, keycloakRealm,
+				*createdClient.ID, *tkco.groups[1].ID,
+				[]gocloak.Role{*tkco.clientRoles[*createdClient.ID][0]},
+			))
+		require.ElementsMatch(t,
+			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[1].ID}],
+			[]string{"openshiftroot"},
+			"sanity check to test if mapping done by test was added")
+
+		_, err = subject.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)})
+		require.NoError(t, err)
+		requireClientRolesForClient(t, tkco, *createdClient.ID, rolesInTemplate...)
+		require.Len(t,
+			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[1].ID}],
+			0,
+			"mapping not in template should have been deleted")
 	})
 
 	t.Run("UpdateSecret", func(t *testing.T) {
@@ -325,6 +349,19 @@ func trackKeycloakObjects(mockKeycloak *mock.MockPartialKeycloakClient) *tracked
 			return id, nil
 		}).AnyTimes()
 
+	mockKeycloak.EXPECT().DeleteClientRole(gomock.Any(), keycloakAccessToken, keycloakRealm, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _, clientId, roleName string) error {
+			if cr, ok := tracked.clientRoles[clientId]; ok {
+				for i, r := range cr {
+					if *r.Name == roleName {
+						tracked.clientRoles[clientId] = append(cr[:i], cr[i+1:]...)
+						return nil
+					}
+				}
+			}
+			return &gocloak.APIError{Code: http.StatusNotFound, Message: "Role not found"}
+		}).AnyTimes()
+
 	mockKeycloak.EXPECT().GetGroupByPath(gomock.Any(), keycloakAccessToken, keycloakRealm, gomock.Any()).DoAndReturn(
 		func(_ context.Context, _, _ string, groupPath string) (*gocloak.Group, error) {
 			for _, g := range tracked.groups {
@@ -333,6 +370,27 @@ func trackKeycloakObjects(mockKeycloak *mock.MockPartialKeycloakClient) *tracked
 				}
 			}
 			return nil, &gocloak.APIError{Code: http.StatusNotFound}
+		}).AnyTimes()
+
+	mockKeycloak.EXPECT().GetGroupsByClientRole(gomock.Any(), keycloakAccessToken, keycloakRealm, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _, roleName, clientID string) ([]*gocloak.Group, error) {
+			var groups []*gocloak.Group
+			for k, v := range tracked.clientRolesToGroupsMapping {
+				if k.clientId == clientID {
+					for _, r := range v {
+						if r != roleName {
+							continue
+						}
+						for _, g := range tracked.groups {
+							g := g
+							if *g.ID == k.groupId {
+								groups = append(groups, &g)
+							}
+						}
+					}
+				}
+			}
+			return groups, nil
 		}).AnyTimes()
 
 	mockKeycloak.EXPECT().AddClientRolesToGroup(gomock.Any(), keycloakAccessToken, keycloakRealm, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
@@ -346,6 +404,20 @@ func trackKeycloakObjects(mockKeycloak *mock.MockPartialKeycloakClient) *tracked
 			slices.Sort(rs)
 			tracked.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: idOfClient, groupId: groupID}] = slices.Compact(rs)
 
+			return nil
+		}).AnyTimes()
+
+	mockKeycloak.EXPECT().DeleteClientRoleFromGroup(gomock.Any(), keycloakAccessToken, keycloakRealm, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _, idOfClient string, groupID string, roles []gocloak.Role) error {
+			rs := slices.Clone(tracked.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: idOfClient, groupId: groupID}])
+
+			for _, r := range roles {
+				rs = slices.DeleteFunc(rs, func(rn string) bool {
+					return rn == *r.Name
+				})
+			}
+
+			tracked.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: idOfClient, groupId: groupID}] = rs
 			return nil
 		}).AnyTimes()
 
@@ -420,4 +492,15 @@ func reconcileNTimes(ctx context.Context, subject reconcile.Reconciler, req reco
 		}
 	}
 	return multierr.Combine(errs...)
+}
+
+func requireClientRolesForClient(t *testing.T, tkco *trackedKeycloakObjects, clientId string, expectedRoles ...string) {
+	t.Helper()
+
+	createdClientRoles := tkco.clientRoles[clientId]
+	rn := make([]string, len(createdClientRoles))
+	for i, r := range createdClientRoles {
+		rn[i] = *r.Name
+	}
+	require.ElementsMatch(t, expectedRoles, rn)
 }
