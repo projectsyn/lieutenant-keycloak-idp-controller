@@ -55,7 +55,7 @@ type ClusterReconciler struct {
 
 	ClientTemplateFile            string
 	ClientRoleMappingTemplateFile string
-	TemplateLibraryPaths          []string
+	JsonnetImportPaths            []string
 
 	KeycloakClientIgnorePaths []string
 }
@@ -390,7 +390,7 @@ func (r *ClusterReconciler) jsonnetVMWithContext(instance *lieutenantv1alpha1.Cl
 	jvm := jsonnet.MakeVM()
 	jvm.ExtCode("context", string(jcr))
 	jvm.Importer(&jsonnet.FileImporter{
-		JPaths: r.TemplateLibraryPaths,
+		JPaths: r.JsonnetImportPaths,
 	})
 	return jvm, nil
 }
