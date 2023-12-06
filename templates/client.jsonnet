@@ -28,7 +28,6 @@ local vars = import 'vars.jsonnet';
   protocol: 'openid-connect',
   attributes: {
     'oidc.ciba.grant.enabled': 'false',
-    'client.secret.creation.time': '1698160867',
     'backchannel.logout.session.required': 'true',
     'oauth2.device.authorization.grant.enabled': 'false',
     'display.on.consent.screen': 'false',

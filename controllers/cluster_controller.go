@@ -128,7 +128,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	l.Info("Client found, updating", "client", client.ID)
 	templatedClient.ID = client.ID
 
-	ignores := append([]string{"/secret"}, r.KeycloakClientIgnorePaths...)
+	ignores := append([]string{
+		"/secret",
+		"/attributes/client.secret.creation.time",
+	}, r.KeycloakClientIgnorePaths...)
 	patch, err := jsondiff.Compare(client, templatedClient, jsondiff.Ignores(ignores...))
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to compare existing and templated clients: %w", err)
