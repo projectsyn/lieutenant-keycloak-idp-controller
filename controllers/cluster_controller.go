@@ -320,7 +320,7 @@ func (r *ClusterReconciler) syncClientRoleGroupMappings(ctx context.Context, tok
 	}
 	for groupPath, roles := range groups {
 		if len(roles) == 0 {
-			l.Info("No roles to map, skipping", "group", groupPath)
+			l.Info("Group has no roles to map, skipping", "group", groupPath)
 			continue
 		}
 
