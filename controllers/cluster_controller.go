@@ -60,7 +60,7 @@ type ClusterReconciler struct {
 	KeycloakClientIgnorePaths []string
 }
 
-//+kubebuilder:rbac:groups=syn.tools,resources=clusters,verbs=get;list;watch
+//+kubebuilder:rbac:groups=syn.tools,resources=clusters,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=syn.tools,resources=clusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=syn.tools,resources=clusters/finalizers,verbs=update
 
