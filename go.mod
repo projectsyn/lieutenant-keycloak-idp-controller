@@ -12,7 +12,7 @@ require (
 	github.com/projectsyn/lieutenant-operator v1.5.0
 	github.com/stretchr/testify v1.8.4
 	github.com/wI2L/jsondiff v0.5.0
-	go.uber.org/mock v0.3.0
+	go.uber.org/mock v0.4.0
 	go.uber.org/multierr v1.11.0
 	golang.org/x/exp v0.0.0-20231127185646-65229373498e
 	golang.org/x/oauth2 v0.15.0
