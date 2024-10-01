@@ -2,7 +2,7 @@ module github.com/projectsyn/lieutenant-keycloak-idp-controller
 
 go 1.21
 
-toolchain go1.21.4
+toolchain go1.23.2
 
 require (
 	github.com/Nerzal/gocloak/v13 v13.8.0
