@@ -7,7 +7,7 @@ toolchain go1.21.4
 require (
 	github.com/Nerzal/gocloak/v13 v13.8.0
 	github.com/go-logr/logr v1.3.0
-	github.com/google/go-jsonnet v0.20.0
+	github.com/google/go-jsonnet v0.21.0
 	github.com/hashicorp/vault-client-go v0.4.2
 	github.com/projectsyn/lieutenant-operator v1.5.0
 	github.com/stretchr/testify v1.8.4
