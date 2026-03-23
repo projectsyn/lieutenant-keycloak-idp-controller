@@ -10,7 +10,7 @@ require (
 	github.com/google/go-jsonnet v0.20.0
 	github.com/hashicorp/vault-client-go v0.4.2
 	github.com/projectsyn/lieutenant-operator v1.5.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.11.1
 	github.com/wI2L/jsondiff v0.5.0
 	go.uber.org/mock v0.3.0
 	go.uber.org/multierr v1.11.0
