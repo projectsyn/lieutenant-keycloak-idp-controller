@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.4
 
 require (
-	github.com/Nerzal/gocloak/v13 v13.8.0
+	github.com/Nerzal/gocloak/v13 v13.9.0
 	github.com/go-logr/logr v1.3.0
 	github.com/google/go-jsonnet v0.20.0
 	github.com/hashicorp/vault-client-go v0.4.2
@@ -41,7 +41,7 @@ require (
 	github.com/go-resty/resty/v2 v2.10.0 // indirect
 	github.com/gobuffalo/flect v1.0.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
