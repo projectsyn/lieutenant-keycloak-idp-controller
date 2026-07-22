@@ -12,7 +12,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	gocloak "github.com/Nerzal/gocloak/v13"
+	gocloak "github.com/Nerzal/gocloak/v14"
 	gomock "go.uber.org/mock/gomock"
 )
 
