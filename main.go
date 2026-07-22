@@ -9,7 +9,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"github.com/Nerzal/gocloak/v13"
+	"github.com/Nerzal/gocloak/v14"
 	"github.com/hashicorp/vault-client-go"
 	lieutenantv1alpha1 "github.com/projectsyn/lieutenant-operator/api/v1alpha1"
 	"go.uber.org/multierr"

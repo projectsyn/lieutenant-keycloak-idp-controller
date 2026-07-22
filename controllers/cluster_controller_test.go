@@ -10,7 +10,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Nerzal/gocloak/v13"
+	"github.com/Nerzal/gocloak/v14"
 	"github.com/go-logr/logr/testr"
 	"github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
@@ -158,22 +158,22 @@ func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 
 	t.Run("UpdateClient", func(t *testing.T) {
 		createdClient := tkco.clients[0]
-		require.Equal(t, map[string]string{"custom": "attribute", "ignored": "attribute"}, *createdClient.Attributes, "should have attributes from template")
-		createdClient.Attributes = &map[string]string{"custom": "attribute", "new": "attribute"}
+		require.Equal(t, map[string]string{"custom": "attribute", "ignored": "attribute"}, createdClient.Attributes, "should have attributes from template")
+		createdClient.Attributes = map[string]string{"custom": "attribute", "new": "attribute"}
 		_, err := subject.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)})
 		require.NoError(t, err)
 
 		updatedClient := tkco.clients[0]
-		require.Equal(t, map[string]string{"custom": "attribute", "ignored": "attribute"}, *updatedClient.Attributes, "should have attributes from template")
+		require.Equal(t, map[string]string{"custom": "attribute", "ignored": "attribute"}, updatedClient.Attributes, "should have attributes from template")
 
-		createdClient.Attributes = &map[string]string{"custom": "attribute", "ignored": "changed"}
+		createdClient.Attributes = map[string]string{"custom": "attribute", "ignored": "changed"}
 		_, err = subject.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)})
 		require.NoError(t, err)
 
 		updatedClient = tkco.clients[0]
 		require.Equal(t,
 			map[string]string{"custom": "attribute", "ignored": "changed"},
-			*updatedClient.Attributes,
+			updatedClient.Attributes,
 			"changes to ignored attributes should not trigger a client update")
 
 		// Add a new client role that should be deleted on next reconcile
