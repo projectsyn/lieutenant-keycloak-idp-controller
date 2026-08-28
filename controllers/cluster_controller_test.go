@@ -70,7 +70,7 @@ func Test_ClusterReconciler_Reconcile_AddFinalizer(t *testing.T) {
 	require.Contains(t, cl.Finalizers, finalizerName)
 }
 
-func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
+func Test_ClusterReconciler_Reconcile_E2E_SingleClient(t *testing.T) {
 	ctx := log.IntoContext(context.Background(), testr.New(t))
 	tpld := t.TempDir()
 	require.NoError(t, os.WriteFile(path.Join(tpld, "client.jsonnet"), []byte(testtemplates.Client), 0644))
@@ -144,7 +144,7 @@ func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[0].ID}],
 			"should add mapping to referenced group")
 
-		sk := "test/keycloak/oidcClient"
+		sk := "test/keycloak/oidcClient_cluster_test"
 		require.ElementsMatch(t,
 			[]string{sk},
 			maps.Keys(tks.secrets),
@@ -204,7 +204,194 @@ func Test_ClusterReconciler_Reconcile_E2E(t *testing.T) {
 
 	t.Run("UpdateSecret", func(t *testing.T) {
 		createdClient := tkco.clients[0]
-		sk := "test/keycloak/oidcClient"
+		sk := "test/keycloak/oidcClient_cluster_test"
+
+		require.Equal(t,
+			tks.secrets[sk],
+			map[string]any{"secret": md5sum(*createdClient.ClientID)},
+			"should have created a secret with the secret returned by keycloak")
+
+		tks.secrets[sk]["secret"] = "invalid"
+
+		_, err := subject.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)})
+		require.NoError(t, err)
+
+		require.Equal(t,
+			tks.secrets[sk],
+			map[string]any{"secret": md5sum(*createdClient.ClientID)},
+			"should have updated the secret with the secret returned by keycloak")
+	})
+
+	t.Run("DeleteClient", func(t *testing.T) {
+		require.NoError(t, c.Delete(ctx, cluster))
+
+		require.NoError(t,
+			reconcileNTimes(ctx, subject, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)}, 2))
+
+		require.Len(t, tkco.clients, 0, "should have deleted the client")
+		require.Len(t, tks.secrets, 0, "should have deleted the secret")
+
+		require.Error(t, c.Get(ctx, client.ObjectKeyFromObject(cluster), cluster), "cluster should be deleted after finalizer was removed")
+	})
+}
+
+func Test_ClusterReconciler_Reconcile_E2E_MultipleClients(t *testing.T) {
+	ctx := log.IntoContext(context.Background(), testr.New(t))
+	tpld := t.TempDir()
+	require.NoError(t, os.WriteFile(path.Join(tpld, "clients.jsonnet"), []byte(testtemplates.Clients), 0644))
+	require.NoError(t, os.WriteFile(path.Join(tpld, "crm.jsonnet"), []byte(testtemplates.ClientRoles), 0644))
+
+	mctrl := gomock.NewController(t)
+	defer mctrl.Finish()
+
+	mockKeycloak := mock.NewMockPartialKeycloakClient(mctrl)
+	mockVaultAuth := mock.NewMockVaultPartialAuthClient(mctrl)
+	mockVaultSecrets := mock.NewMockVaultPartialSecretsClient(mctrl)
+
+	mockKeycloakLogin(mockKeycloak, keycloakLoginRealm)
+	mockVaultLogin(mockVaultAuth)
+	tkco := trackKeycloakObjects(mockKeycloak)
+	tks := trackVaultSecretCreation(mockVaultSecrets)
+
+	cluster := &lieutenantv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test",
+			Namespace:  "test",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: lieutenantv1alpha1.ClusterSpec{
+			DisplayName: "test",
+		},
+	}
+
+	c := fakeClient(t, cluster)
+
+	tkco.groups = append(tkco.groups, gocloak.Group{
+		ID:   ptr.To("b45ec6e5-edfc-4823-93f0-9f3012a42f64"),
+		Path: ptr.To("/LDAP/VSHN openshiftroot"),
+	}, gocloak.Group{
+		ID:   ptr.To("10f810e0-54b8-45af-bbc4-a721d34be7e4"),
+		Path: ptr.To("/LDAP/VSHN AdditionalGroupOfUsers"),
+	})
+
+	subject := &ClusterReconciler{
+		Client: c,
+		Scheme: c.Scheme(),
+
+		KeycloakLoginRealm: keycloakLoginRealm,
+		KeycloakRealm:      keycloakRealm,
+
+		KeycloakClient: mockKeycloak,
+
+		VaultTokenSource:   vaultTokenSource,
+		VaultAuthClient:    mockVaultAuth,
+		VaultSecretsClient: mockVaultSecrets,
+
+		ClientTemplateFile:            path.Join(tpld, "clients.jsonnet"),
+		ClientRoleMappingTemplateFile: path.Join(tpld, "crm.jsonnet"),
+
+		KeycloakClientIgnorePaths: []string{"/attributes/ignored"},
+	}
+
+	require.NoError(t,
+		reconcileNTimes(ctx, subject, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)}, 5))
+
+	t.Run("CreateClientAndSecret", func(t *testing.T) {
+		require.Len(t, tkco.clients, 2, "should have created 2 clients")
+		createdClient := tkco.clients[0]
+		require.Equal(t, "cluster_test", *createdClient.ClientID, "should have created client with correct name")
+
+		requireClientRolesForClient(t, tkco, *createdClient.ID, rolesInTemplate...)
+
+		require.Len(t, tkco.clientRolesToGroupsMapping, 2)
+		require.ElementsMatch(t,
+			[]string{"openshiftroot"},
+			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[0].ID}],
+			"should add mapping to referenced group")
+
+		sk1 := "test/keycloak/oidcClient_cluster_test"
+		sk2 := "test/keycloak/oidcClient_cluster_test_two"
+		require.ElementsMatch(t,
+			[]string{sk1, sk2},
+			maps.Keys(tks.secrets),
+			"should have created a secret")
+
+		require.Equal(t,
+			tks.secrets[sk1],
+			map[string]any{"secret": md5sum(*createdClient.ClientID)},
+			"should have created a secret with the secret returned by keycloak")
+
+		createdClient = tkco.clients[1]
+		require.Equal(t, "cluster_test_two", *createdClient.ClientID, "should have created client with correct name")
+
+		requireClientRolesForClient(t, tkco, *createdClient.ID, rolesInTemplate...)
+
+		require.Len(t, tkco.clientRolesToGroupsMapping, 2)
+		require.ElementsMatch(t,
+			[]string{"openshiftroot"},
+			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[0].ID}],
+			"should add mapping to referenced group")
+
+		require.ElementsMatch(t,
+			[]string{sk1, sk2},
+			maps.Keys(tks.secrets),
+			"should have created a secret")
+
+		require.Equal(t,
+			tks.secrets[sk2],
+			map[string]any{"secret": md5sum(*createdClient.ClientID)},
+			"should have created a secret with the secret returned by keycloak")
+	})
+
+	t.Run("UpdateClient", func(t *testing.T) {
+		createdClient := tkco.clients[0]
+		require.Equal(t, map[string]string{"custom": "attribute", "ignored": "attribute"}, createdClient.Attributes, "should have attributes from template")
+		createdClient.Attributes = map[string]string{"custom": "attribute", "new": "attribute"}
+		_, err := subject.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)})
+		require.NoError(t, err)
+
+		updatedClient := tkco.clients[0]
+		require.Equal(t, map[string]string{"custom": "attribute", "ignored": "attribute"}, updatedClient.Attributes, "should have attributes from template")
+
+		createdClient.Attributes = map[string]string{"custom": "attribute", "ignored": "changed"}
+		_, err = subject.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)})
+		require.NoError(t, err)
+
+		updatedClient = tkco.clients[0]
+		require.Equal(t,
+			map[string]string{"custom": "attribute", "ignored": "changed"},
+			updatedClient.Attributes,
+			"changes to ignored attributes should not trigger a client update")
+
+		// Add a new client role that should be deleted on next reconcile
+		newRole := "additional-role"
+		_, err = mockKeycloak.CreateClientRole(ctx, keycloakAccessToken, keycloakRealm, *createdClient.ID, gocloak.Role{Name: ptr.To(newRole)})
+		require.NoError(t, err)
+		requireClientRolesForClient(t, tkco, *createdClient.ID, append(rolesInTemplate, newRole)...)
+		// add a random mapping that should be deleted on next reconcile
+		require.NoError(t,
+			mockKeycloak.AddClientRolesToGroup(ctx,
+				keycloakAccessToken, keycloakRealm,
+				*createdClient.ID, *tkco.groups[1].ID,
+				[]gocloak.Role{*tkco.clientRoles[*createdClient.ID][0]},
+			))
+		require.ElementsMatch(t,
+			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[1].ID}],
+			[]string{"openshiftroot"},
+			"sanity check to test if mapping done by test was added")
+
+		_, err = subject.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cluster)})
+		require.NoError(t, err)
+		requireClientRolesForClient(t, tkco, *createdClient.ID, rolesInTemplate...)
+		require.Len(t,
+			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[1].ID}],
+			0,
+			"mapping not in template should have been deleted")
+	})
+
+	t.Run("UpdateSecret", func(t *testing.T) {
+		createdClient := tkco.clients[0]
+		sk := "test/keycloak/oidcClient_cluster_test"
 
 		require.Equal(t,
 			tks.secrets[sk],
