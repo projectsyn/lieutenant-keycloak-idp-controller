@@ -5,6 +5,7 @@
 //
 //	mockgen -destination=./mock/vault_partial_auth_client.go -package mock . VaultPartialAuthClient
 //
+
 // Package mock is a generated GoMock package.
 package mock
 
@@ -21,6 +22,7 @@ import (
 type MockVaultPartialAuthClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockVaultPartialAuthClientMockRecorder
+	isgomock struct{}
 }
 
 // MockVaultPartialAuthClientMockRecorder is the mock recorder for MockVaultPartialAuthClient.
@@ -41,21 +43,21 @@ func (m *MockVaultPartialAuthClient) EXPECT() *MockVaultPartialAuthClientMockRec
 }
 
 // KubernetesLogin mocks base method.
-func (m *MockVaultPartialAuthClient) KubernetesLogin(arg0 context.Context, arg1 schema.KubernetesLoginRequest, arg2 ...vault.RequestOption) (*vault.Response[map[string]interface{}], error) {
+func (m *MockVaultPartialAuthClient) KubernetesLogin(ctx context.Context, request schema.KubernetesLoginRequest, options ...vault.RequestOption) (*vault.Response[map[string]any], error) {
 	m.ctrl.T.Helper()
-	varargs := []any{arg0, arg1}
-	for _, a := range arg2 {
+	varargs := []any{ctx, request}
+	for _, a := range options {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "KubernetesLogin", varargs...)
-	ret0, _ := ret[0].(*vault.Response[map[string]interface{}])
+	ret0, _ := ret[0].(*vault.Response[map[string]any])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // KubernetesLogin indicates an expected call of KubernetesLogin.
-func (mr *MockVaultPartialAuthClientMockRecorder) KubernetesLogin(arg0, arg1 any, arg2 ...any) *gomock.Call {
+func (mr *MockVaultPartialAuthClientMockRecorder) KubernetesLogin(ctx, request any, options ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{arg0, arg1}, arg2...)
+	varargs := append([]any{ctx, request}, options...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "KubernetesLogin", reflect.TypeOf((*MockVaultPartialAuthClient)(nil).KubernetesLogin), varargs...)
 }

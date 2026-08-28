@@ -5,6 +5,7 @@
 //
 //	mockgen -destination=./mock/partial_keycloak_client.go -package mock . PartialKeycloakClient
 //
+
 // Package mock is a generated GoMock package.
 package mock
 
@@ -20,6 +21,7 @@ import (
 type MockPartialKeycloakClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockPartialKeycloakClientMockRecorder
+	isgomock struct{}
 }
 
 // MockPartialKeycloakClientMockRecorder is the mock recorder for MockPartialKeycloakClient.
@@ -40,190 +42,190 @@ func (m *MockPartialKeycloakClient) EXPECT() *MockPartialKeycloakClientMockRecor
 }
 
 // AddClientRolesToGroup mocks base method.
-func (m *MockPartialKeycloakClient) AddClientRolesToGroup(arg0 context.Context, arg1, arg2, arg3, arg4 string, arg5 []gocloak.Role) error {
+func (m *MockPartialKeycloakClient) AddClientRolesToGroup(ctx context.Context, token, realm, idOfClient, groupID string, roles []gocloak.Role) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddClientRolesToGroup", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "AddClientRolesToGroup", ctx, token, realm, idOfClient, groupID, roles)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AddClientRolesToGroup indicates an expected call of AddClientRolesToGroup.
-func (mr *MockPartialKeycloakClientMockRecorder) AddClientRolesToGroup(arg0, arg1, arg2, arg3, arg4, arg5 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) AddClientRolesToGroup(ctx, token, realm, idOfClient, groupID, roles any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddClientRolesToGroup", reflect.TypeOf((*MockPartialKeycloakClient)(nil).AddClientRolesToGroup), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddClientRolesToGroup", reflect.TypeOf((*MockPartialKeycloakClient)(nil).AddClientRolesToGroup), ctx, token, realm, idOfClient, groupID, roles)
 }
 
 // CreateClient mocks base method.
-func (m *MockPartialKeycloakClient) CreateClient(arg0 context.Context, arg1, arg2 string, arg3 gocloak.Client) (string, error) {
+func (m *MockPartialKeycloakClient) CreateClient(ctx context.Context, accessToken, realm string, newClient gocloak.Client) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateClient", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "CreateClient", ctx, accessToken, realm, newClient)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateClient indicates an expected call of CreateClient.
-func (mr *MockPartialKeycloakClientMockRecorder) CreateClient(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) CreateClient(ctx, accessToken, realm, newClient any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).CreateClient), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).CreateClient), ctx, accessToken, realm, newClient)
 }
 
 // CreateClientRole mocks base method.
-func (m *MockPartialKeycloakClient) CreateClientRole(arg0 context.Context, arg1, arg2, arg3 string, arg4 gocloak.Role) (string, error) {
+func (m *MockPartialKeycloakClient) CreateClientRole(ctx context.Context, accessToken, realm, idOfClient string, role gocloak.Role) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateClientRole", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "CreateClientRole", ctx, accessToken, realm, idOfClient, role)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateClientRole indicates an expected call of CreateClientRole.
-func (mr *MockPartialKeycloakClientMockRecorder) CreateClientRole(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) CreateClientRole(ctx, accessToken, realm, idOfClient, role any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).CreateClientRole), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).CreateClientRole), ctx, accessToken, realm, idOfClient, role)
 }
 
 // DeleteClient mocks base method.
-func (m *MockPartialKeycloakClient) DeleteClient(arg0 context.Context, arg1, arg2, arg3 string) error {
+func (m *MockPartialKeycloakClient) DeleteClient(ctx context.Context, accessToken, realm, idOfClient string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteClient", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "DeleteClient", ctx, accessToken, realm, idOfClient)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteClient indicates an expected call of DeleteClient.
-func (mr *MockPartialKeycloakClientMockRecorder) DeleteClient(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) DeleteClient(ctx, accessToken, realm, idOfClient any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClient), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClient), ctx, accessToken, realm, idOfClient)
 }
 
 // DeleteClientRole mocks base method.
-func (m *MockPartialKeycloakClient) DeleteClientRole(arg0 context.Context, arg1, arg2, arg3, arg4 string) error {
+func (m *MockPartialKeycloakClient) DeleteClientRole(ctx context.Context, token, realm, idOfClient, roleName string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteClientRole", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "DeleteClientRole", ctx, token, realm, idOfClient, roleName)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteClientRole indicates an expected call of DeleteClientRole.
-func (mr *MockPartialKeycloakClientMockRecorder) DeleteClientRole(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) DeleteClientRole(ctx, token, realm, idOfClient, roleName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClientRole), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClientRole), ctx, token, realm, idOfClient, roleName)
 }
 
 // DeleteClientRoleFromGroup mocks base method.
-func (m *MockPartialKeycloakClient) DeleteClientRoleFromGroup(arg0 context.Context, arg1, arg2, arg3, arg4 string, arg5 []gocloak.Role) error {
+func (m *MockPartialKeycloakClient) DeleteClientRoleFromGroup(ctx context.Context, token, realm, idOfClient, groupID string, roles []gocloak.Role) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteClientRoleFromGroup", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "DeleteClientRoleFromGroup", ctx, token, realm, idOfClient, groupID, roles)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteClientRoleFromGroup indicates an expected call of DeleteClientRoleFromGroup.
-func (mr *MockPartialKeycloakClientMockRecorder) DeleteClientRoleFromGroup(arg0, arg1, arg2, arg3, arg4, arg5 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) DeleteClientRoleFromGroup(ctx, token, realm, idOfClient, groupID, roles any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClientRoleFromGroup", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClientRoleFromGroup), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClientRoleFromGroup", reflect.TypeOf((*MockPartialKeycloakClient)(nil).DeleteClientRoleFromGroup), ctx, token, realm, idOfClient, groupID, roles)
 }
 
 // GetClientRoles mocks base method.
-func (m *MockPartialKeycloakClient) GetClientRoles(arg0 context.Context, arg1, arg2, arg3 string, arg4 gocloak.GetRoleParams) ([]*gocloak.Role, error) {
+func (m *MockPartialKeycloakClient) GetClientRoles(ctx context.Context, accessToken, realm, idOfClient string, params gocloak.GetRoleParams) ([]*gocloak.Role, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetClientRoles", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "GetClientRoles", ctx, accessToken, realm, idOfClient, params)
 	ret0, _ := ret[0].([]*gocloak.Role)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetClientRoles indicates an expected call of GetClientRoles.
-func (mr *MockPartialKeycloakClientMockRecorder) GetClientRoles(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) GetClientRoles(ctx, accessToken, realm, idOfClient, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClientRoles", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetClientRoles), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClientRoles", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetClientRoles), ctx, accessToken, realm, idOfClient, params)
 }
 
 // GetClients mocks base method.
-func (m *MockPartialKeycloakClient) GetClients(arg0 context.Context, arg1, arg2 string, arg3 gocloak.GetClientsParams) ([]*gocloak.Client, error) {
+func (m *MockPartialKeycloakClient) GetClients(ctx context.Context, accessToken, realm string, params gocloak.GetClientsParams) ([]*gocloak.Client, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetClients", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "GetClients", ctx, accessToken, realm, params)
 	ret0, _ := ret[0].([]*gocloak.Client)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetClients indicates an expected call of GetClients.
-func (mr *MockPartialKeycloakClientMockRecorder) GetClients(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) GetClients(ctx, accessToken, realm, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClients", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetClients), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClients", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetClients), ctx, accessToken, realm, params)
 }
 
 // GetGroupByPath mocks base method.
-func (m *MockPartialKeycloakClient) GetGroupByPath(arg0 context.Context, arg1, arg2, arg3 string) (*gocloak.Group, error) {
+func (m *MockPartialKeycloakClient) GetGroupByPath(ctx context.Context, token, realm, groupPath string) (*gocloak.Group, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGroupByPath", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "GetGroupByPath", ctx, token, realm, groupPath)
 	ret0, _ := ret[0].(*gocloak.Group)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetGroupByPath indicates an expected call of GetGroupByPath.
-func (mr *MockPartialKeycloakClientMockRecorder) GetGroupByPath(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) GetGroupByPath(ctx, token, realm, groupPath any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroupByPath", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetGroupByPath), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroupByPath", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetGroupByPath), ctx, token, realm, groupPath)
 }
 
 // GetGroupsByClientRole mocks base method.
-func (m *MockPartialKeycloakClient) GetGroupsByClientRole(arg0 context.Context, arg1, arg2, arg3, arg4 string) ([]*gocloak.Group, error) {
+func (m *MockPartialKeycloakClient) GetGroupsByClientRole(ctx context.Context, token, realm, roleName, clientID string) ([]*gocloak.Group, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGroupsByClientRole", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "GetGroupsByClientRole", ctx, token, realm, roleName, clientID)
 	ret0, _ := ret[0].([]*gocloak.Group)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetGroupsByClientRole indicates an expected call of GetGroupsByClientRole.
-func (mr *MockPartialKeycloakClientMockRecorder) GetGroupsByClientRole(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) GetGroupsByClientRole(ctx, token, realm, roleName, clientID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroupsByClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetGroupsByClientRole), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGroupsByClientRole", reflect.TypeOf((*MockPartialKeycloakClient)(nil).GetGroupsByClientRole), ctx, token, realm, roleName, clientID)
 }
 
 // LoginAdmin mocks base method.
-func (m *MockPartialKeycloakClient) LoginAdmin(arg0 context.Context, arg1, arg2, arg3 string) (*gocloak.JWT, error) {
+func (m *MockPartialKeycloakClient) LoginAdmin(ctx context.Context, username, password, realm string) (*gocloak.JWT, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LoginAdmin", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "LoginAdmin", ctx, username, password, realm)
 	ret0, _ := ret[0].(*gocloak.JWT)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // LoginAdmin indicates an expected call of LoginAdmin.
-func (mr *MockPartialKeycloakClientMockRecorder) LoginAdmin(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) LoginAdmin(ctx, username, password, realm any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoginAdmin", reflect.TypeOf((*MockPartialKeycloakClient)(nil).LoginAdmin), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoginAdmin", reflect.TypeOf((*MockPartialKeycloakClient)(nil).LoginAdmin), ctx, username, password, realm)
 }
 
 // LogoutPublicClient mocks base method.
-func (m *MockPartialKeycloakClient) LogoutPublicClient(arg0 context.Context, arg1, arg2, arg3, arg4 string) error {
+func (m *MockPartialKeycloakClient) LogoutPublicClient(ctx context.Context, clientID, realm, accessToken, refreshToken string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LogoutPublicClient", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "LogoutPublicClient", ctx, clientID, realm, accessToken, refreshToken)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // LogoutPublicClient indicates an expected call of LogoutPublicClient.
-func (mr *MockPartialKeycloakClientMockRecorder) LogoutPublicClient(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) LogoutPublicClient(ctx, clientID, realm, accessToken, refreshToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogoutPublicClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).LogoutPublicClient), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogoutPublicClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).LogoutPublicClient), ctx, clientID, realm, accessToken, refreshToken)
 }
 
 // UpdateClient mocks base method.
-func (m *MockPartialKeycloakClient) UpdateClient(arg0 context.Context, arg1, arg2 string, arg3 gocloak.Client) error {
+func (m *MockPartialKeycloakClient) UpdateClient(ctx context.Context, accessToken, realm string, updatedClient gocloak.Client) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateClient", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "UpdateClient", ctx, accessToken, realm, updatedClient)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateClient indicates an expected call of UpdateClient.
-func (mr *MockPartialKeycloakClientMockRecorder) UpdateClient(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockPartialKeycloakClientMockRecorder) UpdateClient(ctx, accessToken, realm, updatedClient any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).UpdateClient), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateClient", reflect.TypeOf((*MockPartialKeycloakClient)(nil).UpdateClient), ctx, accessToken, realm, updatedClient)
 }
