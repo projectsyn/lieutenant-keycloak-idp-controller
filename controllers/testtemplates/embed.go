@@ -7,5 +7,8 @@ import (
 //go:embed client.jsonnet
 var Client string
 
+//go:embed clients.jsonnet
+var Clients string
+
 //go:embed client-roles.jsonnet
 var ClientRoles string

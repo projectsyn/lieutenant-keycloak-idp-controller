@@ -106,62 +106,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	// Create or updated client
-	templatedClient, err := r.templateKeycloakClient(jvm)
+	templatedClients, err := r.templateKeycloakClient(jvm)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to template keycloak client: %w", err)
+		return ctrl.Result{}, fmt.Errorf("unable to template keycloak clients: %w", err)
 	}
-
-	client, err := r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to get client: %w", err)
-	}
-	if client == nil {
-		l.Info("Client not found, creating", "client", templatedClient)
-		id, err := r.KeycloakClient.CreateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to create client: %w", err)
-		}
-		l.Info("Client created, requeuing", "id", id)
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	l.Info("Client found, updating", "client", client.ID)
-	templatedClient.ID = client.ID
-
-	ignores := append([]string{
-		"/secret",
-		"/attributes/client.secret.creation.time",
-	}, r.KeycloakClientIgnorePaths...)
-	patch, err := jsondiff.Compare(client, templatedClient, jsondiff.Ignores(ignores...))
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to compare existing and templated clients: %w", err)
-	}
-	if len(patch) == 0 {
-		l.Info("No changes to the client detected")
-	} else {
-		l.Info("Updating client", "changes", patch)
-		if err := r.KeycloakClient.UpdateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient); err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to update client: %w", err)
-		}
-	}
-
-	client, err = r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to get client after creation or updating: %w", err)
-	}
-	if client == nil {
-		return ctrl.Result{}, fmt.Errorf("client %q not found after creation or updating", *templatedClient.ClientID)
-	}
-
-	// Vault secret
-	if client.Secret != nil && *client.Secret != "" {
-		if err := r.syncVaultSecret(ctx, instance, *client.Secret); err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to sync vault secret: %w", err)
-		}
-	} else {
-		l.Info("Client has no secret, might be a public client. Skipping vault secret sync.")
-	}
-
 	// template client roles
 	rolesRaw, err := jvm.EvaluateFile(r.ClientRoleMappingTemplateFile)
 	if err != nil {
@@ -176,15 +124,87 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	})
 	templatedRoles = slices.Compact(templatedRoles)
 
+	errors := []error{}
+	requeue := false
+	for _, templatedClient := range templatedClients {
+		req, err := r.updateSingleClient(ctx, templatedClient, templatedRoles, instance, token)
+		if err != nil {
+			errors = append(errors, err)
+		}
+		requeue = req || requeue
+	}
+
+	if len(errors) > 0 {
+		return ctrl.Result{}, multierr.Combine(errors...)
+	}
+
+	if requeue {
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r ClusterReconciler) updateSingleClient(ctx context.Context, templatedClient gocloak.Client, templatedRoles []roleMapping, instance *lieutenantv1alpha1.Cluster, token *gocloak.JWT) (requeue bool, err error) {
+	l := log.FromContext(ctx).WithName("ClusterReconciler.updateSingleClient")
+	client, err := r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
+	if err != nil {
+		return false, fmt.Errorf("unable to get client: %w", err)
+	}
+	if client == nil {
+		l.Info("Client not found, creating", "client", templatedClient)
+		id, err := r.KeycloakClient.CreateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient)
+		if err != nil {
+			return false, fmt.Errorf("unable to create client: %w", err)
+		}
+		l.Info("Client created, requeuing", "id", id)
+		return true, nil
+	}
+
+	l.Info("Client found, updating", "client", client.ID)
+	templatedClient.ID = client.ID
+
+	ignores := append([]string{
+		"/secret",
+		"/attributes/client.secret.creation.time",
+	}, r.KeycloakClientIgnorePaths...)
+	patch, err := jsondiff.Compare(client, templatedClient, jsondiff.Ignores(ignores...))
+	if err != nil {
+		return false, fmt.Errorf("unable to compare existing and templated clients: %w", err)
+	}
+	if len(patch) == 0 {
+		l.Info("No changes to the client detected")
+	} else {
+		l.Info("Updating client", "changes", patch)
+		if err := r.KeycloakClient.UpdateClient(ctx, token.AccessToken, r.KeycloakRealm, templatedClient); err != nil {
+			return false, fmt.Errorf("unable to update client: %w", err)
+		}
+	}
+
+	client, err = r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
+	if err != nil {
+		return false, fmt.Errorf("unable to get client after creation or updating: %w", err)
+	}
+	if client == nil {
+		return false, fmt.Errorf("client %q not found after creation or updating", *templatedClient.ClientID)
+	}
+
+	// Vault secret
+	if client.Secret != nil && *client.Secret != "" {
+		if err := r.syncVaultSecret(ctx, instance, *templatedClient.ClientID, *client.Secret); err != nil {
+			return false, fmt.Errorf("unable to sync vault secret: %w", err)
+		}
+	} else {
+		l.Info("Client has no secret, might be a public client. Skipping vault secret sync.")
+	}
+
 	if err := r.syncClientRoles(ctx, token.AccessToken, *client.ID, templatedRoles); err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to sync client roles: %w", err)
+		return false, fmt.Errorf("unable to sync client roles: %w", err)
 	}
 
 	if err := r.syncClientRoleGroupMappings(ctx, token.AccessToken, *client.ID, templatedRoles); err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to sync client role group mappings: %w", err)
+		return false, fmt.Errorf("unable to sync client role group mappings: %w", err)
 	}
-
-	return ctrl.Result{}, nil
+	return false, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -195,7 +215,6 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieutenantv1alpha1.Cluster) (err error) {
-	l := log.FromContext(ctx).WithName("ClusterReconciler.cleanup")
 
 	jvm, err := r.jsonnetVMWithContext(instance)
 	if err != nil {
@@ -203,7 +222,7 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 	}
 
 	// call into jsonnet to get the templated client id
-	templatedClient, err := r.templateKeycloakClient(jvm)
+	templatedClients, err := r.templateKeycloakClient(jvm)
 	if err != nil {
 		return fmt.Errorf("unable to template keycloak client: %w", err)
 	}
@@ -218,6 +237,22 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 		}
 	}()
 
+	errors := []error{}
+	for _, templatedClient := range templatedClients {
+		err := r.cleanupSingleClient(ctx, instance, templatedClient, token)
+		if err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		return multierr.Combine(errors...)
+	}
+	return nil
+}
+
+func (r *ClusterReconciler) cleanupSingleClient(ctx context.Context, instance *lieutenantv1alpha1.Cluster, templatedClient gocloak.Client, token *gocloak.JWT) error {
+	l := log.FromContext(ctx).WithName("ClusterReconciler.cleanupSingleClient")
 	client, err := r.findClientByClientId(ctx, token.AccessToken, r.KeycloakRealm, *templatedClient.ClientID)
 	if err != nil {
 		return fmt.Errorf("unable to get client: %w", err)
@@ -236,12 +271,11 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 	if err != nil {
 		return fmt.Errorf("unable to login to vault: %w", err)
 	}
-	secretPath := vaultSecretPath(instance)
+	secretPath := vaultSecretPath(instance, *templatedClient.ClientID)
 	mountPath := vault.WithMountPath(r.VaultKvPath)
 	if _, err := r.VaultSecretsClient.KvV2Delete(ctx, secretPath, mountPath, tokenAuth); err != nil {
 		return fmt.Errorf("unable to delete vault secret: %w", err)
 	}
-
 	return nil
 }
 
@@ -399,19 +433,29 @@ func (r *ClusterReconciler) jsonnetVMWithContext(instance *lieutenantv1alpha1.Cl
 	return jvm, nil
 }
 
-func (r *ClusterReconciler) templateKeycloakClient(jvm *jsonnet.VM) (gocloak.Client, error) {
+func (r *ClusterReconciler) templateKeycloakClient(jvm *jsonnet.VM) ([]gocloak.Client, error) {
 	cRaw, err := jvm.EvaluateFile(r.ClientTemplateFile)
 	if err != nil {
-		return gocloak.Client{}, fmt.Errorf("unable to evaluate jsonnet: %w", err)
+		return []gocloak.Client{}, fmt.Errorf("unable to evaluate jsonnet: %w", err)
 	}
-	var c gocloak.Client
-	if err := json.Unmarshal([]byte(cRaw), &c); err != nil {
-		return c, fmt.Errorf("unable to unmarshal `cluster` jsonnet result: %w", err)
+	var cs []gocloak.Client
+	if err := json.Unmarshal([]byte(cRaw), &cs); err != nil {
+		// Fallback: Try parsing as a single client
+		var c gocloak.Client
+		if ierr := json.Unmarshal([]byte(cRaw), &c); ierr != nil {
+			return []gocloak.Client{}, fmt.Errorf("unable to unmarshal `cluster` jsonnet result: %w", multierr.Combine(err, ierr))
+		}
+		if c.ClientID == nil || *c.ClientID == "" {
+			return []gocloak.Client{}, fmt.Errorf("invalid cluster template: `clientId` is empty")
+		}
+		return []gocloak.Client{c}, nil
 	}
-	if c.ClientID == nil || *c.ClientID == "" {
-		return c, fmt.Errorf("invalid cluster template: `clientId` is empty")
+	for i, c := range cs {
+		if c.ClientID == nil || *c.ClientID == "" {
+			return []gocloak.Client{}, fmt.Errorf("invalid cluster template: `clientId` is empty at position %d", i)
+		}
 	}
-	return c, nil
+	return cs, nil
 }
 
 func (r *ClusterReconciler) vaultRequestToken(ctx context.Context) (vault.RequestOption, error) {
@@ -430,18 +474,18 @@ func (r *ClusterReconciler) vaultRequestToken(ctx context.Context) (vault.Reques
 	return vault.WithToken(tres.Auth.ClientToken), nil
 }
 
-func vaultSecretPath(instance *lieutenantv1alpha1.Cluster) string {
-	return path.Join(instance.Spec.TenantRef.Name, instance.Name, "keycloak", "oidcClient")
+func vaultSecretPath(instance *lieutenantv1alpha1.Cluster, secretIdentifier string) string {
+	return path.Join(instance.Spec.TenantRef.Name, instance.Name, "keycloak", "oidcClients", secretIdentifier)
 }
 
-func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieutenantv1alpha1.Cluster, secret string) error {
+func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieutenantv1alpha1.Cluster, identifier string, secret string) error {
 	l := log.FromContext(ctx).WithName("ClusterReconciler.syncVaultSecret")
 
 	tokenAuth, err := r.vaultRequestToken(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to login to vault: %w", err)
 	}
-	secretPath := vaultSecretPath(instance)
+	secretPath := vaultSecretPath(instance, identifier)
 	mountPath := vault.WithMountPath(r.VaultKvPath)
 
 	var existingSecret string
