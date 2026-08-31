@@ -475,7 +475,7 @@ func (r *ClusterReconciler) vaultRequestToken(ctx context.Context) (vault.Reques
 }
 
 func vaultSecretPath(instance *lieutenantv1alpha1.Cluster, secretIdentifier string) string {
-	return path.Join(instance.Spec.TenantRef.Name, instance.Name, "keycloak", fmt.Sprintf("oidcClient_%s", secretIdentifier))
+	return path.Join(instance.Spec.TenantRef.Name, instance.Name, "keycloak", "oidcClients", secretIdentifier)
 }
 
 func (r *ClusterReconciler) syncVaultSecret(ctx context.Context, instance *lieutenantv1alpha1.Cluster, identifier string, secret string) error {

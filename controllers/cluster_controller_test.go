@@ -144,7 +144,7 @@ func Test_ClusterReconciler_Reconcile_E2E_SingleClient(t *testing.T) {
 			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[0].ID}],
 			"should add mapping to referenced group")
 
-		sk := "test/keycloak/oidcClient_cluster_test"
+		sk := "test/keycloak/oidcClients/cluster_test"
 		require.ElementsMatch(t,
 			[]string{sk},
 			maps.Keys(tks.secrets),
@@ -204,7 +204,7 @@ func Test_ClusterReconciler_Reconcile_E2E_SingleClient(t *testing.T) {
 
 	t.Run("UpdateSecret", func(t *testing.T) {
 		createdClient := tkco.clients[0]
-		sk := "test/keycloak/oidcClient_cluster_test"
+		sk := "test/keycloak/oidcClients/cluster_test"
 
 		require.Equal(t,
 			tks.secrets[sk],
@@ -309,8 +309,8 @@ func Test_ClusterReconciler_Reconcile_E2E_MultipleClients(t *testing.T) {
 			tkco.clientRolesToGroupsMapping[clientGroupMappingKey{clientId: *createdClient.ID, groupId: *tkco.groups[0].ID}],
 			"should add mapping to referenced group")
 
-		sk1 := "test/keycloak/oidcClient_cluster_test"
-		sk2 := "test/keycloak/oidcClient_cluster_test_two"
+		sk1 := "test/keycloak/oidcClients/cluster_test"
+		sk2 := "test/keycloak/oidcClients/cluster_test_two"
 		require.ElementsMatch(t,
 			[]string{sk1, sk2},
 			maps.Keys(tks.secrets),
@@ -391,7 +391,7 @@ func Test_ClusterReconciler_Reconcile_E2E_MultipleClients(t *testing.T) {
 
 	t.Run("UpdateSecret", func(t *testing.T) {
 		createdClient := tkco.clients[0]
-		sk := "test/keycloak/oidcClient_cluster_test"
+		sk := "test/keycloak/oidcClients/cluster_test"
 
 		require.Equal(t,
 			tks.secrets[sk],
