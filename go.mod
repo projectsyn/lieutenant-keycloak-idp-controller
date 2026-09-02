@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/Nerzal/gocloak/v14 v14.0.3
-	github.com/go-logr/logr v1.3.0
+	github.com/go-logr/logr v1.4.4
 	github.com/google/go-jsonnet v0.20.0
 	github.com/hashicorp/vault-client-go v0.4.2
 	github.com/projectsyn/lieutenant-operator v1.5.0
