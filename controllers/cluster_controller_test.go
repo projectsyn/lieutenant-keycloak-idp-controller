@@ -44,7 +44,7 @@ const (
 )
 
 var (
-	rolesInTemplate = []string{"restricted-access", "openshiftroot", "openshiftrootswissonly"}
+	rolesInTemplate = []string{"restricted-access", "openshiftroot", "openshiftrootswissonly", "zz-foobar"}
 )
 
 func Test_ClusterReconciler_Reconcile_AddFinalizer(t *testing.T) {

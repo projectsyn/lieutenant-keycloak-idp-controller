@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	_ "embed"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -106,27 +107,21 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	// Create or updated client
-	templatedClients, err := r.templateKeycloakClient(jvm)
+	templatedClients, err := r.templateKeycloakClients(jvm)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to template keycloak clients: %w", err)
 	}
-	// template client roles
-	rolesRaw, err := jvm.EvaluateFile(r.ClientRoleMappingTemplateFile)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to evaluate client-roles jsonnet: %w", err)
-	}
-	var templatedRoles []roleMapping
-	if err := json.Unmarshal([]byte(rolesRaw), &templatedRoles); err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to unmarshal client-roles jsonnet result: %w", err)
-	}
-	slices.SortFunc(templatedRoles, func(a, b roleMapping) int {
-		return strings.Compare(a.Role, b.Role)*10 + strings.Compare(a.Group, b.Group)
-	})
-	templatedRoles = slices.Compact(templatedRoles)
 
 	errors := []error{}
 	requeue := false
 	for _, templatedClient := range templatedClients {
+
+		templatedRoles, err := r.generateClientRoleMapping(jvm, templatedClient)
+		if err != nil {
+			errors = append(errors, fmt.Errorf("error while rendering client role mapping: %w", err))
+			continue
+		}
+
 		req, err := r.updateSingleClient(ctx, templatedClient, templatedRoles, instance, token)
 		if err != nil {
 			errors = append(errors, err)
@@ -142,6 +137,31 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r ClusterReconciler) generateClientRoleMapping(jvm *jsonnet.VM, client gocloak.Client) ([]roleMapping, error) {
+
+	ser, err := json.Marshal(client)
+	if err != nil {
+		return nil, fmt.Errorf("unable to serialize client for client %s: %w", *client.Name, err)
+	}
+
+	// template client roles
+	jvm.ExtCode("client", string(ser))
+	rolesRaw, err := jvm.EvaluateFile(r.ClientRoleMappingTemplateFile)
+	if err != nil {
+		return nil, fmt.Errorf("unable to evaluate client-roles jsonnet for client %s: %w", *client.Name, err)
+	}
+	var templatedRoles []roleMapping
+	if err := json.Unmarshal([]byte(rolesRaw), &templatedRoles); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal client-roles jsonnet result for client %s: %w", *client.Name, err)
+	}
+	slices.SortFunc(templatedRoles, func(a, b roleMapping) int {
+		return strings.Compare(a.Role, b.Role)*10 + strings.Compare(a.Group, b.Group)
+	})
+	templatedRoles = slices.Compact(templatedRoles)
+	return templatedRoles, nil
+
 }
 
 func (r ClusterReconciler) updateSingleClient(ctx context.Context, templatedClient gocloak.Client, templatedRoles []roleMapping, instance *lieutenantv1alpha1.Cluster, token *gocloak.JWT) (requeue bool, err error) {
@@ -222,7 +242,7 @@ func (r *ClusterReconciler) cleanupClient(ctx context.Context, instance *lieuten
 	}
 
 	// call into jsonnet to get the templated client id
-	templatedClients, err := r.templateKeycloakClient(jvm)
+	templatedClients, err := r.templateKeycloakClients(jvm)
 	if err != nil {
 		return fmt.Errorf("unable to template keycloak client: %w", err)
 	}
@@ -433,22 +453,25 @@ func (r *ClusterReconciler) jsonnetVMWithContext(instance *lieutenantv1alpha1.Cl
 	return jvm, nil
 }
 
-func (r *ClusterReconciler) templateKeycloakClient(jvm *jsonnet.VM) ([]gocloak.Client, error) {
+func (r *ClusterReconciler) templateKeycloakClients(jvm *jsonnet.VM) ([]gocloak.Client, error) {
 	cRaw, err := jvm.EvaluateFile(r.ClientTemplateFile)
 	if err != nil {
 		return []gocloak.Client{}, fmt.Errorf("unable to evaluate jsonnet: %w", err)
 	}
+	dec := jsontext.NewDecoder(strings.NewReader(cRaw))
+	kind := dec.PeekKind()
+
 	var cs []gocloak.Client
-	if err := json.Unmarshal([]byte(cRaw), &cs); err != nil {
-		// Fallback: Try parsing as a single client
+	if kind == jsontext.KindBeginArray {
+		if err := json.Unmarshal([]byte(cRaw), &cs); err != nil {
+			return []gocloak.Client{}, fmt.Errorf("unable to unmarshal `cluster` jsonnet result: %w", err)
+		}
+	} else {
 		var c gocloak.Client
-		if ierr := json.Unmarshal([]byte(cRaw), &c); ierr != nil {
-			return []gocloak.Client{}, fmt.Errorf("unable to unmarshal `cluster` jsonnet result: %w", multierr.Combine(err, ierr))
+		if err := json.Unmarshal([]byte(cRaw), &c); err != nil {
+			return []gocloak.Client{}, fmt.Errorf("unable to unmarshal `cluster` jsonnet result: %w", err)
 		}
-		if c.ClientID == nil || *c.ClientID == "" {
-			return []gocloak.Client{}, fmt.Errorf("invalid cluster template: `clientId` is empty")
-		}
-		return []gocloak.Client{c}, nil
+		cs = []gocloak.Client{c}
 	}
 	for i, c := range cs {
 		if c.ClientID == nil || *c.ClientID == "" {
