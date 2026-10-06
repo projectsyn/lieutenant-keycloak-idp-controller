@@ -1,4 +1,5 @@
 local context = std.extVar('context');
+local client = std.extVar('client');
 
 [
   {
@@ -11,5 +12,9 @@ local context = std.extVar('context');
   {
     role: 'restricted-access',
     group: '/LDAP_Customers/Service %s' % context.cluster.metadata.name,
+  },
+  {
+    role: 'zz-foobar',
+    group: '%s' % client.name,
   },
 ]
